@@ -1,0 +1,476 @@
+---
+title: "scRNAseq Neonatal Lung Injury 2.1"
+author: Shawyon Shirazi & Nick Negretti
+date: 3/13/24
+output: rmarkdown::github_document
+---
+
+# Analysis of the lung epithelium
+
+## Load libraries and helper functions
+```{r, results="hide", message = FALSE, load-libraries}
+source("./helper_functions/globals.R")
+source("./helper_functions/libraries.R")
+source("./helper_functions/cluster.R")
+source("./helper_functions/colors.R")
+
+N_WORKERS <- 12
+plan("multicore", workers = N_WORKERS)
+```
+
+## Load data from merge and clean pipeline
+```{r}
+epi <- readRDS("./data/checkpoint/post_sct_split_epi.rds")
+```
+
+# Plot epithelial data feature counts, RNA counts, and % mitochondrial genes
+```{r qc metrics violin}
+epi_metric <- VlnPlot(epi,
+                      c("nFeature_RNA", "nCount_RNA", "percent.mt"),
+                      group.by = "condition")
+
+ggsave("./data/checkpoint/epi/epi_metric_testing1.png",
+       plot = epi_metric)
+```
+
+## UMAP and clustering part 1
+```{r, fig.width = 12}
+epi <- cluster_pca_umap(epi,
+                        k_param = 10,
+                        dims_umap = 1:15,
+                        dims_neighbors = 1:15,
+                        cluster_res = 1.2,
+                        harmony = TRUE)
+
+p_cluster <- DimPlot(epi, label = TRUE) +
+             umap_theme() +
+             theme(aspect.ratio = 1)
+
+epi_cluster <- p_cluster +
+               plot_annotation("Epithelium")
+ggsave("./data/checkpoint/epi/cluster1.png",
+       plot = epi_cluster)
+```
+
+```{r}
+marker_genes <- c("EPCAM", "PECAM1", "PTPRC", "COL1A1", # Broad subtype
+                  "AGER", "RTKN2", #AT1
+                  "SFTPC", "ABCA3", "SFTPD", "LAMP3", #AT2
+                  "HOPX", # AT1 and AT2
+                  "KRT5", "KRT17", "TP63", # Basal
+                  "FOXJ1", "TMEM190", "RSPH1", # Multiciliated
+                  "SCGB3A2", "SOX4", "MGP", # RASC
+                  "SCGB3A1", "MUC5B", # Goblet
+                  "MKI67", "TOP2A", "CDC20", "CDK1") # Prolif and extra
+epi_markers <- DotPlot(epi,
+                       features = marker_genes) +
+               theme(axis.text.x = element_text(angle = 45,
+                                                hjust = 1))
+ggsave("./data/checkpoint/epi/markers1.pdf",
+       plot = epi_markers)
+```
+
+```{r metrics}
+vlnplot_metrics <- VlnPlot(epi,
+                           features = c("nCount_RNA",
+                                        "nCount_SCT",
+                                        "percent.mt",
+                                        "percent.rb"),
+                           group.by = "seurat_clusters")
+ggsave("./data/checkpoint/epi/metrics1.png",
+       plot = vlnplot_metrics,
+       width = 20)
+```
+
+# Remove mesenchymal, Endothelial, epithelial, and immune doublets. 
+# Remove non-biological clusters.
+```{r}
+epi_sub <- subset(epi,
+                  idents = c(5, 18, 19, 20, 24),
+                  invert = TRUE)
+```
+
+## UMAP and clustering part 2
+```{r, fig.width = 12}
+epi_sub <- cluster_pca_umap(epi_sub,
+                            k_param = 10,
+                            dims_umap = 1:15,
+                            dims_neighbors = 1:15,
+                            cluster_res = 1.2)
+
+p_cluster <- DimPlot(epi_sub, label = TRUE) +
+                     umap_theme() +
+                     theme(aspect.ratio = 1)
+
+epi_cluster2 <- p_cluster +
+                plot_annotation("Epithelium")
+
+ggsave("./data/checkpoint/epi/cluster2.png")
+```
+
+```{r}
+marker_genes <- c("EPCAM", "PECAM1", "PTPRC", "COL1A1",
+                  "AGER", "RTKN2",
+                  "SFTPC", "ABCA3", "SFTPD", "LAMP3",
+                  "HOPX",
+                  "KRT5", "KRT17", "TP63",
+                  "FOXJ1", "TMEM190", "RSPH1",
+                  "SCGB3A2", "SOX4", "MGP",
+                  "SCGB3A1", "MUC5B",
+                  "NKX2-1", "CLDN4", "CDKN2A", "ANKRD1", "AREG", "NKD1", "LEF1",
+                  "SOX9", "SLC34A2", "LCN2", "CLDN18", "SLPI", "SFTPA1",
+                  "HMGA2", "AXIN2", "KRT8", "ID2", "NFKBIA", "CD44")
+epi_dotplot2 <- DotPlot(epi_sub,
+                        features = marker_genes) +
+                theme(axis.text.x = element_text(angle = 45,
+                                                 hjust = 1))
+ggsave("./data/checkpoint/epi/markers2.pdf",
+       width = 15)
+```
+
+```{r metrics2}
+vlnplot_metrics <- VlnPlot(epi_sub,
+                           features = c("nCount_RNA",
+                                        "nCount_SCT",
+                                        "percent.mt",
+                                        "percent.rb"),
+                           group.by = "seurat_clusters")
+ggsave("./data/checkpoint/epi/metrics2.png",
+       plot = vlnplot_metrics,
+       width = 15)
+``` 
+
+```{r}
+epi_sub2 <- subset(epi_sub,
+                   idents = c(14),
+                   invert = TRUE)
+```
+
+```{r}
+N_WORKERS <- 20
+plan("multicore", workers = N_WORKERS)
+epi_sub2_sct <- SCTransform(epi_sub2,
+                            variable.features.n = 2000,
+                            batch_var = "dataset",
+                            conserve.memory = TRUE,
+                            vars.to.regress = c("percent.mt",
+                                                "percent.rb"),
+                            method = "glmGamPoi",
+                            ncells = NULL)
+```
+
+## UMAP and clustering part 3
+```{r soupx norm}
+var_feat_backup <- VariableFeatures(epi_sub2_sct)
+epi_sub2_sct <- cluster_pca_umap(epi_sub2_sct,
+                                 k_param = 10,
+                                 dims_umap = 1:15,
+                                 dims_neighbors = 1:15,
+                                 cluster_res = 1.5)
+```
+
+```{r}
+p_cluster <- DimPlot(epi_sub2_sct, label = TRUE) +
+             umap_theme() +
+             theme(aspect.ratio = 1)
+
+epi_cluster3 <- p_cluster +
+                plot_annotation("Epithelium")
+ggsave("./data/checkpoint/epi/cluster3.png")
+```
+
+```{r}
+marker_genes <- c("EPCAM", "PECAM1", "PTPRC", "COL1A1",
+                  "AGER", "RTKN2",
+                  "SFTPC", "ABCA3", "SFTPD", "LAMP3",
+                  "HOPX",
+                  "KRT5", "KRT17", "TP63",
+                  "FOXJ1", "TMEM190", "RSPH1",
+                  "SCGB3A2", "SOX4", "MGP",
+                  "SCGB3A1", "MUC5B", "MKI67",
+                  "NKX2-1", "CLDN4", "CDKN2A", "ANKRD1", "AREG", "NKD1", "LEF1",
+                  "SOX9", "SLC34A2", "LCN2", "CLDN18", "SLPI", "SFTPA1",
+                  "HMGA2", "AXIN2", "KRT8", "ID2", "NFKBIA", "CD44")
+epi_dotplot3 <- DotPlot(epi_sub2_sct,
+                        features = marker_genes) +
+                theme(axis.text.x = element_text(angle = 45,
+                                                 hjust = 1))
+ggsave("./data/checkpoint/epi/markers3.pdf",
+       width = 15)
+```
+
+```{r metrics3}
+vlnplot_metrics <- VlnPlot(epi_sub2_sct,
+                           features = c("nCount_RNA",
+                                        "nCount_SCT",
+                                        "percent.mt",
+                                        "percent.rb"),
+                           group.by = "seurat_clusters")
+ggsave("./data/checkpoint/epi/metrics3.png",
+       plot = vlnplot_metrics)
+FeaturePlot(epi_sub2_sct,
+            c("SCGB3A2"))
+```
+
+```{r}
+epi_sub3_sct <- subset(epi_sub2_sct,
+                       idents = c(13, 15, 21),
+                       invert = TRUE)
+
+```
+
+```{r}
+N_WORKERS <- 20
+plan("multicore", workers = N_WORKERS)
+epi_sub3_sct2 <- SCTransform(epi_sub3_sct,
+                             variable.features.n = 2000,
+                             batch_var = "dataset",
+                             conserve.memory = TRUE,
+                             vars.to.regress = c("percent.mt",
+                                                 "percent.rb"),
+                             method = "glmGamPoi",
+                             ncells = NULL)
+```
+
+## UMAP and clustering part 4
+```{r}
+var_feat_backup <- VariableFeatures(epi_sub3_sct2)
+epi_sub3_sct2 <- cluster_pca_umap(epi_sub3_sct2,
+                                  k_param = 10,
+                                  dims_umap = 1:15,
+                                  dims_neighbors = 1:15,
+                                  cluster_res = 1.2)
+```
+```{r}
+plot_PCA <- DimHeatmap(epi_sub3_sct2,
+                       dims = 1:20,
+                       nfeatures = 40,
+                       fast = FALSE)
+ggsave("./data/checkpoint/epi/PCA2.png",
+       plot_PCA,
+       height = 40)
+```
+
+```{r}
+p_cluster <- DimPlot(epi_sub3_sct2, label = TRUE) +
+             umap_theme() +
+             theme(aspect.ratio = 1)
+
+epi_cluster3 <- p_cluster +
+                plot_annotation("Epithelium")
+ggsave("./data/checkpoint/epi/cluster4.png")
+```
+
+```{r}
+marker_genes <- c("EPCAM", "PECAM1", "PTPRC", "COL1A1",
+                  "AGER", "RTKN2",
+                  "SFTPC", "ABCA3", "SFTPD", "LAMP3",
+                  "HOPX",
+                  "KRT5", "KRT17", "TP63",
+                  "FOXJ1", "TMEM190", "RSPH1",
+                  "SCGB3A2", "SOX4", "MGP",
+                  "SCGB3A1", "MUC5B", "MKI67",
+                  "NKX2-1", "CLDN4", "CDKN2A", "ANKRD1", "AREG", "NKD1", "LEF1",
+                  "SOX9", "SLC34A2", "LCN2", "CLDN18", "SLPI", "SFTPA1",
+                  "HMGA2", "AXIN2", "KRT8", "ID2", "NFKBIA", "CD44")
+epi_dotplot3 <- DotPlot(epi_sub3_sct2,
+                        features = marker_genes) +
+                theme(axis.text.x = element_text(angle = 45,
+                                                 hjust = 1))
+ggsave("./data/checkpoint/epi/markers4.pdf",
+       width = 15)
+```
+
+```{r}
+vlnplot_metrics <- VlnPlot(epi_sub3_sct2,
+                           features = c("nCount_RNA",
+                                        "nCount_SCT",
+                                        "percent.mt",
+                                        "percent.rb"),
+                           group.by = "seurat_clusters")
+ggsave("./data/checkpoint/epi/metrics4.png",
+       plot = vlnplot_metrics)
+```
+
+## UMAP and clustering part 5
+```{r}
+var_feat_backup <- VariableFeatures(epi_sub3_sct2)
+
+epi_sub3_sct2 <- cluster_pca_umap(epi_sub3_sct2,
+                                  k_param = 10,
+                                  dims_umap = 1:15,
+                                  dims_neighbors = 1:15,
+                                  cluster_res = 1)
+```
+
+```{r}
+p_cluster <- DimPlot(epi_sub3_sct2,
+                     label = TRUE) +
+             umap_theme() +
+             theme(aspect.ratio = 1)
+
+epi_cluster3 <- p_cluster +
+                plot_annotation("Epithelium")
+ggsave("./data/checkpoint/epi/cluster5.png")
+```
+
+```{r}
+marker_genes <- c("EPCAM", "PECAM1", "PTPRC", "COL1A1",
+                  "AGER", "RTKN2",
+                  "SFTPC", "ABCA3", "SFTPD", "LAMP3",
+                  "HOPX",
+                  "KRT5", "KRT17", "TP63",
+                  "FOXJ1", "TMEM190", "RSPH1",
+                  "SCGB3A2", "SOX4", "MGP",
+                  "SCGB3A1", "MUC5B",
+                  "NKX2-1", "CLDN4", "CDKN2A", "ANKRD1", "AREG", "NKD1", "LEF1",
+                  "SOX9", "SLC34A2", "LCN2", "CLDN18", "SLPI", "SFTPA1",
+                  "HMGA2", "AXIN2", "KRT8", "ID2", "NFKBIA", "CD44")
+epi_dotplot3 <- DotPlot(epi_sub3_sct2,
+                        features = marker_genes) +
+                theme(axis.text.x = element_text(angle = 45,
+                                                 hjust = 1))
+ggsave("./data/checkpoint/epi/markers4.pdf",
+       width = 15)
+```
+
+```{r metrics3}
+vlnplot_metrics <- VlnPlot(epi_sub3_sct2,
+                           features = c("nCount_RNA",
+                                        "nCount_SCT",
+                                        "percent.mt",
+                                        "percent.rb"),
+                           group.by = "seurat_clusters")
+ggsave("./data/20240124_epi_metrics5_harmony.png",
+       plot = vlnplot_metrics,
+       width = 15)
+```
+
+## Save the DEgenes per cluster
+```{r}
+N_WORKERS <- 20
+plan("multicore", workers = N_WORKERS)
+filename <- "./data/checkpoint/pre_annotated_epi_for_deg.rds"
+if (!file.exists(filename)) {
+  markers <- parallel_find_all_markers(epi_sub3_sct2)
+
+  names(markers) <- levels(Idents(epi_sub3_sct2))
+  saveRDS(markers, filename)
+} else {
+  markers <- readRDS(filename)
+}
+
+wb_markers_names <- levels(Idents(epi_sub3_sct2))
+wb_markers <- createWorkbook()
+for (idx in seq_along(wb_markers_names)){
+  addWorksheet(wb_markers,
+               wb_markers_names[idx])
+  writeData(wb_markers,
+            wb_markers_names[idx],
+            markers[[idx]],
+            rowNames = TRUE)
+}
+saveWorkbook(wb_markers,
+             file = "./data/checkpoint/epi_cluster_deg.xlsx",
+             overwrite = TRUE)
+```
+
+## Annotation
+```{r}
+epi_relabel <- epi_sub3_sct2
+epi_relabel$louvain <- as.factor(epi_sub3_sct2$sub.cluster)
+epi_relabel$celltype <- as.factor(epi_sub3_sct2$sub.cluster)
+
+idxes <- levels(epi_relabel$celltype)
+labels <- rep("AT2", length(levels(epi_relabel$celltype)))
+labels[idxes %in% c(4, 7, 11)] <- "RASC"
+labels[idxes %in% c(9)] <- "Secretory -3A1, -3A2"
+labels[idxes %in% c(1)] <- "AT1"
+labels[idxes %in% c(10)] <- "Multiciliated"
+labels[idxes %in% c(12)] <- "Secretory MUC5B"
+labels[idxes %in% c(8)] <- "Basal"
+
+levels(epi_relabel$celltype) <- labels
+Idents(epi_relabel) <- epi_relabel$celltype
+```
+
+```{r}
+DimPlot(epi_relabel,
+        group.by = "celltype") +
+  scale_color_manual(values = color_scanpy_default)
+```
+
+```{r}
+p_cluster <- DimPlot(epi_relabel,
+                     group.by = "celltype",
+                     label = TRUE) +
+             umap_theme() +
+             scale_colour_manual(name = "Cluster",
+                                 values = color_category_20) +
+             theme(aspect.ratio = 1)
+
+p_cluster + plot_annotation("Epithelium")
+```
+
+# Reorder the clusters
+```{r}
+epi_relabel$celltype <- ordered(as.factor(epi_relabel$celltype),
+                                c("AT1",
+                                  "AT2",
+                                  "RASC",
+                                  "Secretory -3A1, -3A2",
+                                  "Secretory MUC5B",
+                                  "Basal",
+                                  "Multiciliated"))
+```
+
+## Save data for next step merge
+```{r}
+plan("multicore", workers = N_WORKERS)
+filename <- "./data/checkpoint/annotated_epi.rds"
+if (!file.exists(filename)) {
+  saveRDS(epi_relabel,
+          filename,
+          compress = "bzip2")
+}
+```
+
+## Save h5ad for cellxgene visualization
+```{r}
+writeAnnData <- function(seurat_obj, filename) {
+       
+  anndata::AnnData(X = t(GetAssayData(seurat_obj,
+                                      slot = "data",
+                                      assay = "SCT")),
+    var = data.frame(gene = rownames(seurat_obj),
+                     row.names = rownames(seurat_obj)),
+    obs = data.frame(louvain = as.character(Idents(seurat_obj)),
+                     dataset = as.character(seurat_obj$dataset),
+                     seq_run = as.character(seurat_obj$orig.ident),
+                     age = as.character(seurat_obj$age),
+                     condition = as.character(seurat_obj$condition),
+                     annotation = as.character(seurat_obj$celltype),
+                     broad_condition = as.character(seurat_obj$broad_condition),
+                     row.names = colnames(seurat_obj),
+                     total_counts = as.numeric(seurat_obj$nCount_SCT),
+                     pct_mito = as.numeric(seurat_obj$percent.mt),
+                     pct_ribo = as.numeric(seurat_obj$percent.rb)),
+    obsm = list(X_umap = matrix(Embeddings(seurat_obj,
+                                           reduction = "umap"),
+                                ncol = 2)),
+    raw = anndata::AnnData(X = t(GetAssayData(seurat_obj,
+                                              slot = "counts",
+                                              assay = "RNA")),
+                           var = data.frame(gene = rownames(seurat_obj@assays$RNA),
+                                            row.names = rownames(seurat_obj@assays$RNA)))
+  )$write_h5ad(filename,
+               compression = "gzip")
+
+}
+
+filename <- "./data/checkpoint/epi_only.h5ad"
+if (!file.exists(filename)) { # Create if doesn"t exist
+  writeAnnData(epi_relabel,
+               filename)
+}
+```

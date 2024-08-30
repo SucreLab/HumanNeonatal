@@ -1,0 +1,82 @@
+---
+title: "scRNA-seq Neonatal Lung Injury 3.2"
+author: Shawyon Shirazi & Nick Negretti
+date: 3/15/24
+output: rmarkdown::github_document
+---
+
+## Load libraries and helper functions
+```{r, results="hide", message = FALSE}
+source("./helper_functions/globals.R")
+source("./helper_functions/libraries.R")
+source("./helper_functions/cluster.R")
+source("./helper_functions/colors.R")
+
+N_WORKERS <- 12
+plan("multicore", workers = N_WORKERS)
+```
+
+```{r}
+merged_seurat <- readRDS("./data/checkpoint/alldata_neonatal_injury.rds")
+```
+
+```{r}
+Idents(merged_seurat) <- merged_seurat$celltype
+```
+
+```{r}
+merged_seurat <- Seurat::RunPCA(merged_seurat, verbose = FALSE)
+
+merged_seurat <- RunHarmony(merged_seurat,
+                            "dataset",
+                            assay.use = "SCT",
+                            lambda = 1,
+                            sigma = 0.4)
+
+merged_seurat <- Seurat::RunUMAP(merged_seurat,
+                                 reduction = "harmony",
+                                 dims = 1:40,
+                                 verbose = FALSE,
+                                 n.neighbors = 30,
+                                 metric = "euclidean")
+
+merged_seurat <- Seurat::FindNeighbors(merged_seurat,
+                                       reduction = "harmony",
+                                       dims = 1:40,
+                                       k.param = 10)
+
+merged_seurat <- Seurat::FindClusters(merged_seurat,
+                                      resolution = 0.3,
+                                      algorithm = 1)
+```
+```{r}
+writeAnnData <- function(seurat_obj, filename) {
+  anndata::AnnData(X = t(GetAssayData(seurat_obj,
+                                      slot = "data",
+                                      assay = "SCT")),
+    var = data.frame(gene = rownames(seurat_obj),
+                     row.names = rownames(seurat_obj)),
+    obs = data.frame(celltype = as.character(seurat_obj$celltype),
+                     dataset = as.character(seurat_obj$dataset),
+                     broad_celltype = as.character(seurat_obj$bulk_celltype),
+                     age = as.character(seurat_obj$age),
+                     condition = as.character(seurat_obj$condition),
+                     broad_condition = as.character(seurat_obj$broad_condition),
+                     louvain = as.character(seurat_obj$seurat_clusters),
+                     row.names = colnames(seurat_obj),
+                     total_counts = as.numeric(seurat_obj$nCount_SCT),
+                     pct_mito = as.numeric(seurat_obj$percent.mt),
+                     pct_ribo = as.numeric(seurat_obj$percent.rb)),
+    obsm = list(X_umap = matrix(Embeddings(seurat_obj,
+                                           reduction = "umap"),
+                                ncol = 2)),
+    layers = list(counts = t(GetAssayData(seurat_obj,
+                                      slot = "counts",
+                                      assay = "SCT")[rownames(seurat_obj), ]))
+  )$write_h5ad(filename,
+               compression = "gzip")
+}
+
+filename <- "./data/checkpoint/alldata_neonatal_injury.h5ad"
+writeAnnData(merged_seurat, filename)
+```

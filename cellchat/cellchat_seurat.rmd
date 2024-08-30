@@ -1,0 +1,1422 @@
+---
+title: "scRNA-seq Neonatal Lung Injury Cellchat"
+author: Shawyon Shirazi & Nick Negretti
+date: 3/15/24
+output: rmarkdown::github_document
+---
+
+Load the required libraries
+
+```{r}
+library(Matrix)
+library(reticulate)
+library(CellChat)
+library(patchwork)
+options(stringsAsFactors = FALSE)
+```
+
+Load data
+
+```{r}
+#Seurat version of bpd data
+getwd()
+seurat <- readRDS("../data/checkpoint/alldata_neonatal_injury.rds")
+```
+
+```{r}
+seurat
+```
+
+```{r}
+seurat@meta.data
+```
+
+```{r}
+Idents(seurat) <- "celltype"
+subbedseurat <- subset(seurat, idents =  c("aCap",
+                                           "Activated FB",
+                                           "Alveolar FB",
+                                           "abCap",
+                                           "AT1",
+                                           "AT2",
+                                           "gCap",
+                                           "Ductal MyoFB",
+                                           "Alveolar MyoFB",
+                                           "Pericyte",
+                                           "VSMC"))
+```
+
+```{r}
+subbedseurat@meta.data
+```
+
+```{r}
+Idents(subbedseurat) <- "condition"
+normal <- subset(subbedseurat, idents = c("Term infant"))
+bpd <- subset(subbedseurat, idents = c("BPD"))
+bpdph <- subset(subbedseurat, idents = c("BPD+PH"))
+```
+
+```{r}
+normal@meta.data
+```
+
+Create a CellChat object
+
+```{r}
+bpd[["celltype"]]
+```
+
+```{r}
+cellchat.normal <- createCellChat(object = normal,
+                                  group.by = "celltype",
+                                  assay = "SCT")
+cellchat.bpd <- createCellChat(object = bpd,
+                               group.by = "celltype",
+                               assay = "SCT")
+cellchat.bpdph <- createCellChat(object = bpdph,
+                                 group.by = "celltype",
+                                 assay = "SCT")
+```
+
+```{r}
+saveRDS(cellchat.normal, "./cellchat_normal_0307version.RDS")
+saveRDS(cellchat.bpd, "./cellchat_bpd_0307version.RDS")
+saveRDS(cellchat.bpdph, "./cellchat_bpd_ph_0307version.RDS")
+```
+
+```{r}
+cellchat.normal <- readRDS("./cellchat_normal_0307version.RDS")
+cellchat.bpd <- readRDS("./cellchat_bpd_0307version.RDS")
+cellchat.bpdph <- readRDS("./cellchat_bpd_ph_0307version.RDS")
+```
+
+```{r}
+CellChatDB <- CellChatDB.human # use CellChatDB.mouse if running on mouse data
+showDatabaseCategory(CellChatDB)
+```
+
+Set the ligand-receptor interaction database
+
+```{r}
+CellChatDB.use <- CellChatDB
+cellchat.normal@DB <- CellChatDB.use
+cellchat.bpd@DB <- CellChatDB.use
+cellchat.bpdph@DB <- CellChatDB.use
+```
+
+Preprocessing the expression data for cell-cell communication analysis
+
+```{r}
+cellchat.normal <- subsetData(cellchat.normal)
+cellchat.bpd <- subsetData(cellchat.bpd)
+cellchat.bpdph <- subsetData(cellchat.bpdph)
+
+future::plan("multicore", workers = 16) # do parallel
+
+
+cellchat.normal <- identifyOverExpressedGenes(cellchat.normal)
+cellchat.normal <- identifyOverExpressedInteractions(cellchat.normal)
+cellchat.bpd <- identifyOverExpressedGenes(cellchat.bpd)
+cellchat.bpd <- identifyOverExpressedInteractions(cellchat.bpd)
+cellchat.bpdph <- identifyOverExpressedGenes(cellchat.bpdph)
+cellchat.bpdph <- identifyOverExpressedInteractions(cellchat.bpdph)
+```
+
+Compute the communication probability and infer cellular communication network
+
+```{r}
+cellchat.normal@meta
+```
+
+```{r}
+as.data.frame(table(cellchat.normal@meta$celltype))
+```
+
+```{r}
+cellchat.normal <- computeCommunProb(cellchat.normal,
+                                     k.min = 5,
+                                     type = "truncatedMean")
+cellchat.normal <- filterCommunication(cellchat.normal,
+                                       min.cells = 5)
+```
+
+```{r}
+as.data.frame(table(cellchat.bpd@meta$celltype))
+```
+
+```{r}
+cellchat.bpd <- computeCommunProb(cellchat.bpd,
+                                  k.min = 5,
+                                  type = "truncatedMean")
+cellchat.bpd <- filterCommunication(cellchat.bpd,
+                                    min.cells = 5)
+```
+
+```{r}
+as.data.frame(table(cellchat.bpdph@meta$celltype))
+```
+
+```{r}
+cellchat.bpdph <- computeCommunProb(cellchat.bpdph,
+                                    k.min = 5,
+                                    type = "truncatedMean")
+cellchat.bpdph <- filterCommunication(cellchat.bpdph,
+                                      min.cells = 5)
+```
+
+```{r}
+as.data.frame(table(cellchat.pretermph@meta$celltype))
+```
+
+```{r}
+saveRDS(cellchat.normal, "./cellchat_normal_0424version.RDS")
+saveRDS(cellchat.bpd, "./cellchat_bpd_0424version.RDS")
+saveRDS(cellchat.bpdph, "./cellchat_bpd_ph_0424version.RDS")
+```
+
+```{r}
+CellChatDB <- CellChatDB.human
+showDatabaseCategory(CellChatDB)
+CellChatDB.use <- CellChatDB
+cellchat.normal@DB <- CellChatDB.use
+cellchat.bpd@DB <- CellChatDB.use
+cellchat.bpdph@DB <- CellChatDB.use
+```
+
+Infer the cell-cell communication at a signaling pathway level
+
+```{r}
+cellchat.normal <- computeCommunProbPathway(cellchat.normal)
+
+cellchat.bpd <- computeCommunProbPathway(cellchat.bpd)
+
+cellchat.bpdph <- computeCommunProbPathway(cellchat.bpdph)
+```
+
+Calculate the aggregated cell-cell communication network
+
+```{r}
+cellchat.normal <- aggregateNet(cellchat.normal)
+
+cellchat.bpd <- aggregateNet(cellchat.bpd)
+
+cellchat.bpdph <- aggregateNet(cellchat.bpdph)
+```
+
+Visualize the aggregated cell-cell communication network
+
+```{r}
+options(repr.plot.width = 15,
+        repr.plot.height = 8)
+groupSize <- as.numeric(table(cellchat.normal@idents))
+par(mfrow = c(1, 2),
+    xpd = TRUE)
+a <- netVisual_circle(cellchat.normal@net$count,
+                      vertex.weight = groupSize,
+                      weight.scale = TRUE,
+                      label.edge = FALSE,
+                      title.name = "Term infant: Number of interactions")
+b <- netVisual_circle(cellchat.normal@net$weight,
+                      vertex.weight = groupSize,
+                      weight.scale = TRUE,
+                      label.edge = FALSE,
+                      title.name = "Term infant: Interaction weights/strength")
+```
+
+```{r}
+options(repr.plot.width = 15,
+        repr.plot.height = 8)
+groupSize <- as.numeric(table(cellchat.bpd@idents))
+par(mfrow = c(1, 2),
+    xpd = TRUE)
+c <- netVisual_circle(cellchat.bpd@net$count,
+                      vertex.weight = groupSize,
+                      weight.scale = TRUE,
+                      label.edge = FALSE,
+                      title.name = "BPD: Number of interactions")
+d <- netVisual_circle(cellchat.bpd@net$weight,
+                      vertex.weight = groupSize,
+                      weight.scale = TRUE,
+                      label.edge = FALSE,
+                      title.name = "BPD: Interaction weights/strength")
+```
+
+```{r}
+options(repr.plot.width = 15,
+        repr.plot.height = 8)
+groupSize <- as.numeric(table(cellchat.bpdph@idents))
+par(mfrow = c(1, 2),
+    xpd = TRUE)
+e <- netVisual_circle(cellchat.bpdph@net$count,
+                      vertex.weight = groupSize,
+                      weight.scale = TRUE,
+                      label.edge = FALSE,
+                      title.name = "BPD+PH: Number of interactions")
+f <- netVisual_circle(cellchat.bpdph@net$weight,
+                      vertex.weight = groupSize,
+                      weight.scale = TRUE,
+                      label.edge = FALSE,
+                      title.name = "BPD+PH: Interaction weights/strength")
+```
+
+Visualize the aggregated cell-cell communication network per celltype
+
+```{r}
+options(repr.plot.width = 25,
+        repr.plot.height = 16)
+mat <- cellchat.normal@net$weight
+par(mfrow = c(3, 4),
+    xpd = TRUE)
+for (i in 1:nrow(mat)) {
+  mat2 <- matrix(0,
+                 nrow = nrow(mat),
+                 ncol = ncol(mat),
+                 dimnames = dimnames(mat))
+  mat2[i, ] <- mat[i, ]
+  netVisual_circle(mat2,
+                   vertex.weight = groupSize,
+                   weight.scale = TRUE,
+                   edge.weight.max = max(mat),
+                   title.name = rownames(mat)[i])
+}
+```
+
+```{r}
+options(repr.plot.width = 25,
+        repr.plot.height = 16)
+mat <- cellchat.bpd@net$weight
+par(mfrow = c(3, 4),
+    xpd = TRUE)
+for (i in 1:nrow(mat)) {
+  mat2 <- matrix(0,
+                 nrow = nrow(mat),
+                 ncol = ncol(mat),
+                 dimnames = dimnames(mat))
+  mat2[i, ] <- mat[i, ]
+  netVisual_circle(mat2,
+                   vertex.weight = groupSize,
+                   weight.scale = TRUE,
+                   edge.weight.max = max(mat),
+                   title.name = rownames(mat)[i])
+}
+```
+
+```{r}
+options(repr.plot.width = 25,
+        repr.plot.height = 16)
+mat <- cellchat.bpdph@net$weight
+par(mfrow = c(3, 4),
+    xpd = TRUE)
+for (i in 1:nrow(mat)) {
+  mat2 <- matrix(0,
+                 nrow = nrow(mat),
+                 ncol = ncol(mat),
+                 dimnames = dimnames(mat))
+  mat2[i, ] <- mat[i, ]
+  netVisual_circle(mat2,
+                   vertex.weight = groupSize,
+                   weight.scale = TRUE,
+                   edge.weight.max = max(mat),
+                   title.name = rownames(mat)[i])
+}
+```
+
+Visualize each signaling pathway using Hierarchy plot, Circle plot, Heatmap or Chord diagram
+
+```{r}
+sort(unique(CellChatDB$interaction$pathway_name))
+```
+
+```{r}
+allpathways <- sort(unique(CellChatDB$interaction$pathway_name))
+```
+
+```{r}
+allpathways[223]
+```
+
+```{r}
+cellchat.normal@netP
+```
+
+```{r}
+length(cellchat.normal@netP$pathways)
+```
+
+```{r}
+mainpathways <- cellchat.normal@netP$pathways
+```
+
+```{r}
+mainpathways
+```
+
+```{r}
+length(mainpathways)
+```
+
+```{r}
+library(future.apply)
+```
+
+```{r}
+library(svglite)
+```
+
+```{r}
+createpathwaydirectories <- function(pathway) {
+  data.dir <- paste0("./data_0424version/", pathway)
+  dir.create(data.dir)
+}
+future_lapply(mainpathways, createpathwaydirectories)
+```
+
+```{r}
+future::plan("multicore", workers = 4) # do parallel
+```
+
+```{r}
+dev.off()
+```
+
+```{r}
+options(repr.plot.width = 10,
+        repr.plot.height = 6)
+
+func <- function(pathway) {
+  pathways.show <- pathway
+  # Hierarchy plot
+  vertex.receiver <- seq(1, 4)
+  netVisual_aggregate(cellchat.normal,
+                      signaling = pathways.show,
+                      vertex.receiver = vertex.receiver)
+  title(pathway)
+  dev.off()
+  # Circle plot
+  par(mfrow = c(1, 1))
+  pdf(file = paste0("./data_0424version/",
+                    pathway,
+                    "/signaling_pathway_circleplot_",
+                    pathway,
+                    "_normal.pdf"),
+      width = 10,
+      height = 10)
+  b <- netVisual_aggregate(cellchat.normal,
+                           signaling = pathways.show,
+                           layout = "circle")
+  title(pathway)
+  dev.off()
+  # Chord diagram
+  par(mfrow = c(1, 1))
+  pdf(file = paste0("./data_0424version/",
+                    pathway,
+                    "/signaling_pathway_chordplot_",
+                    pathway,
+                    "_normal.pdf"),
+      width = 10,
+      height = 10)
+  c <- netVisual_aggregate(cellchat.normal,
+                           signaling = pathways.show,
+                           layout = "chord")
+  title(pathway)
+  dev.off()
+  # Heatmap
+  par(mfrow = c(1, 1))
+  pdf(paste0("./data_0424version/",
+             pathway,
+             "/signaling_pathway_heatmap_",
+             pathway,
+             "_normal.pdf"))
+  d <- netVisual_heatmap(cellchat.normal,
+                         signaling = pathways.show,
+                         color.heatmap = "Reds")
+  ComplexHeatmap::draw(d)
+  dev.off()
+  rm(d)
+}
+
+lapply(mainpathways, func)
+```
+
+```{r}
+mainpathwaysbpd <- cellchat.bpd@netP$pathways
+```
+
+```{r}
+dev.off()
+dev.off()
+```
+
+```{r}
+setdiff(mainpathwaysbpd, mainpathways)
+```
+
+```{r}
+options(repr.plot.width = 10,
+        repr.plot.height = 6)
+
+func <- function(pathway) {
+  pathways.show <- pathway
+  # Hierarchy plot
+  vertex.receiver <- seq(1, 4)
+  netVisual_aggregate(cellchat.bpd,
+                      signaling = pathways.show,
+                      vertex.receiver = vertex.receiver)
+  title(pathway)
+  dev.off()
+  # Circle plot
+  par(mfrow = c(1, 1))
+  pdf(file = paste0("./data_0424version/",
+                    pathway,
+                    "/signaling_pathway_circleplot_",
+                    pathway,
+                    "_bpd.pdf"),
+      width = 10,
+      height = 10)
+  b <- netVisual_aggregate(cellchat.bpd,
+                           signaling = pathways.show,
+                           layout = "circle")
+  title(pathway)
+  dev.off()
+  # Chord diagram
+  par(mfrow = c(1, 1))
+  pdf(file = paste0("./data_0424version/",
+                    pathway,
+                    "/signaling_pathway_chordplot_",
+                    pathway,
+                    "_bpd.pdf"),
+      width = 10,
+      height = 10)
+  c <- netVisual_aggregate(cellchat.bpd,
+                           signaling = pathways.show,
+                           layout = "chord")
+  title(pathway)
+  dev.off()
+  # Heatmap
+  par(mfrow = c(1, 1))
+  pdf(paste0("./data_0424version/",
+             pathway,
+             "/signaling_pathway_heatmap_",
+             pathway,
+             "_bpd.pdf"))
+  d <- netVisual_heatmap(cellchat.bpd,
+                         signaling = pathways.show,
+                         color.heatmap = "Reds")
+  ComplexHeatmap::draw(d)
+  dev.off()
+  rm(d)
+}
+
+lapply(mainpathwaysbpd, func)
+```
+
+```{r}
+mainpathwaysbpdph <- cellchat.bpdph@netP$pathways
+```
+
+```{r}
+cellchat.bpdph@netP$pathways
+```
+
+```{r}
+setdiff(mainpathwaysbpdph, mainpathways)
+```
+
+```{r}
+options(repr.plot.width = 10,
+        repr.plot.height = 6)
+
+func <- function(pathway) {
+  pathways.show <- pathway
+  # Hierarchy plot
+  vertex.receiver <- seq(1, 4)
+  netVisual_aggregate(cellchat.bpdph,
+                      signaling = pathways.show,
+                      vertex.receiver = vertex.receiver)
+  title(pathway)
+  dev.off()
+  # Circle plot
+  par(mfrow = c(1, 1))
+  pdf(file = paste0("./data_0424version/",
+                    pathway,
+                    "/signaling_pathway_circleplot_",
+                    pathway,
+                    "_bpdph.pdf"),
+      width = 10,
+      height = 10)
+  b <- netVisual_aggregate(cellchat.bpdph,
+                           signaling = pathways.show,
+                           layout = "circle")
+  title(pathway)
+  dev.off()
+  # Chord diagram
+  par(mfrow = c(1, 1))
+  pdf(file = paste0("./data_0424version/",
+                    pathway,
+                    "/signaling_pathway_chordplot_",
+                    pathway,
+                    "_bpdph.pdf"),
+      width = 10,
+      height = 10)
+  c <- netVisual_aggregate(cellchat.bpdph,
+                           signaling = pathways.show,
+                           layout = "chord")
+  title(pathway)
+  dev.off()
+  # Heatmap
+  par(mfrow = c(1, 1))
+  pdf(paste0("./data_0424version/",
+             pathway,
+             "/signaling_pathway_heatmap_",
+             pathway,
+             "_bpdph.pdf"))
+  d <- netVisual_heatmap(cellchat.bpdph,
+                         signaling = pathways.show,
+                         color.heatmap = "Reds")
+  ComplexHeatmap::draw(d)
+  dev.off()
+  rm(d)
+}
+
+lapply(mainpathwaysbpdph, func)
+```
+
+Compute the contribution of each ligand-receptor pair to the overall signaling pathway and visualize cell-cell communication mediated by a single ligand-receptor pair
+
+```{r}
+pairLR.CXCL[, ]
+```
+
+```{r}
+allpathways[1]
+```
+
+```{r}
+dev.off()
+dev.off()
+```
+
+```{r}
+options(repr.plot.width = 10,
+        repr.plot.height = 6)
+func <- function(pathway) {
+  pathways.show <- pathway
+  pdf(file = paste0("./data_0424version/",
+                    pathway,
+                    "/bargraph_contributions_of_LR_pairs_in_",
+                    pathway,
+                    "_pathway_",
+                    "normal.pdf"),
+      width = 10,
+      height = 10)
+  a <- netAnalysis_contribution(cellchat.normal,
+                                signaling = pathways.show)
+  print(a)
+  dev.off()
+  pairLR.CXCL <- extractEnrichedLR(cellchat.normal,
+                                   signaling = pathways.show,
+                                   geneLR.return = FALSE)
+  insidefunc <- function(lrpair) {
+    LR.show <- lrpair
+    # Hierarchy plot
+    vertex.receiver = seq(1, 4)
+    netVisual_individual(cellchat.normal,
+                         signaling = pathways.show,
+                         pairLR.use = LR.show,
+                         vertex.receiver = vertex.receiver)
+    # Circle plot
+    pdf(file = paste0("./data_0424version/",
+                      pathway,
+                      "/circleplot_from_pathway_",
+                      pathway,
+                      "_LR_pair_",
+                      lrpair,
+                      "_",
+                      "normal.pdf"),
+        width = 10,
+        height = 10)
+    b <- netVisual_individual(cellchat.normal,
+                              signaling = pathways.show,
+                              pairLR.use = LR.show,
+                              layout = "circle")
+    title(pathway)
+    print(b)
+    dev.off()
+    pdf(file = paste0("./data_0424version/",
+                      pathway,
+                      "/chordplot_from_pathway_",
+                      pathway,
+                      "_LR_pair_",
+                      lrpair,
+                      "_",
+                      "normal.pdf"),
+        width = 10,
+        height = 10)
+    c <- netVisual_individual(cellchat.normal,
+                              signaling = pathways.show,
+                              pairLR.use = LR.show,
+                              layout = "chord")
+    title(pathway)
+    print(c)
+    dev.off()
+  }
+  lapply(pairLR.CXCL[, ], insidefunc)
+}
+
+lapply(mainpathways, func)
+```
+
+```{r}
+options(repr.plot.width = 10,
+        repr.plot.height = 6)
+options(repr.plot.width = 10,
+        repr.plot.height = 6)
+func <- function(pathway) {
+  pathways.show <- pathway
+  pdf(file = paste0("./data_0424version/",
+                    pathway,
+                    "/bargraph_contributions_of_LR_pairs_in_",
+                    pathway,
+                    "_pathway_",
+                    "bpd.pdf"),
+      width = 10,
+      height = 10)
+  a <- netAnalysis_contribution(cellchat.bpd,
+                                signaling = pathways.show)
+  print(a)
+  dev.off()
+  pairLR.CXCL <- extractEnrichedLR(cellchat.bpd,
+                                   signaling = pathways.show,
+                                   geneLR.return = FALSE)
+  insidefunc <- function(lrpair) {
+    LR.show <- lrpair
+    # Hierarchy plot
+    vertex.receiver = seq(1, 4)
+    netVisual_individual(cellchat.bpd,
+                         signaling = pathways.show,
+                         pairLR.use = LR.show,
+                         vertex.receiver = vertex.receiver)
+    # Circle plot
+    pdf(file = paste0("./data_0424version/",
+                      pathway,
+                      "/circleplot_from_pathway_",
+                      pathway,
+                      "_LR_pair_",
+                      lrpair,
+                      "_",
+                      "bpd.pdf"),
+        width = 10,
+        height = 10)
+    b <- netVisual_individual(cellchat.bpd,
+                              signaling = pathways.show,
+                              pairLR.use = LR.show,
+                              layout = "circle")
+    title(pathway)
+    print(b)
+    dev.off()
+    pdf(file = paste0("./data_0424version/",
+                      pathway,
+                      "/chordplot_from_pathway_",
+                      pathway,
+                      "_LR_pair_",
+                      lrpair,
+                      "_",
+                      "bpd.pdf"),
+        width = 10,
+        height = 10)
+    c <- netVisual_individual(cellchat.bpd,
+                              signaling = pathways.show,
+                              pairLR.use = LR.show,
+                              layout = "chord")
+    title(pathway)
+    print(c)
+    dev.off()
+  }
+  lapply(pairLR.CXCL[, ], insidefunc)
+}
+
+lapply(mainpathwaysbpd, func)
+```
+
+```{r}
+options(repr.plot.width = 10,
+        repr.plot.height = 6)
+options(repr.plot.width = 10,
+        repr.plot.height = 6)
+func <- function(pathway) {
+  pathways.show <- pathway
+  pdf(file = paste0("./data_0424version/",
+                    pathway,
+                    "/bargraph_contributions_of_LR_pairs_in_",
+                    pathway,
+                    "_pathway_",
+                    "bpd_ph.pdf"),
+      width = 10,
+      height = 10)
+  a <- netAnalysis_contribution(cellchat.bpdph,
+                                signaling = pathways.show)
+  print(a)
+  dev.off()
+  pairLR.CXCL <- extractEnrichedLR(cellchat.bpdph,
+                                   signaling = pathways.show,
+                                   geneLR.return = FALSE)
+  insidefunc <- function(lrpair) {
+    LR.show <- lrpair
+    # Hierarchy plot
+    vertex.receiver = seq(1, 4)
+    netVisual_individual(cellchat.bpdph,
+                         signaling = pathways.show,
+                         pairLR.use = LR.show,
+                         vertex.receiver = vertex.receiver)
+    # Circle plot
+    pdf(file = paste0("./data_0424version/",
+                      pathway,
+                      "/circleplot_from_pathway_",
+                      pathway,
+                      "_LR_pair_",
+                      lrpair,
+                      "_",
+                      "bpd_ph.pdf"),
+        width = 10,
+        height = 10)
+    b <- netVisual_individual(cellchat.bpdph,
+                              signaling = pathways.show,
+                              pairLR.use = LR.show,
+                              layout = "circle")
+    title(pathway)
+    print(b)
+    dev.off()
+    pdf(file = paste0("./data_0424version/",
+                      pathway,
+                      "/chordplot_from_pathway_",
+                      pathway,
+                      "_LR_pair_",
+                      lrpair,
+                      "_",
+                      "bpd_ph.pdf"),
+        width = 10,
+        height = 10)
+    c <- netVisual_individual(cellchat.bpdph,
+                              signaling = pathways.show,
+                              pairLR.use = LR.show,
+                              layout = "chord")
+    title(pathway)
+    print(c)
+    dev.off()
+  }
+  lapply(pairLR.CXCL[, ], insidefunc)
+}
+
+lapply(mainpathwaysbpdph, func)
+```
+
+Visualize cell-cell communication mediated by multiple ligand-receptors or signaling pathways
+
+```{r}
+levels(cellchat.normal@idents)
+```
+
+```{r}
+dev.off()
+dev.off()
+```
+
+```{r}
+options(repr.plot.width = 15,
+        repr.plot.height = 20)
+
+func <- function(pathway) {
+  # show all the significant interactions (L-R pairs) based on user"s input (defined by `pairLR.use`)
+  pairLR.use <- extractEnrichedLR(cellchat.normal,
+                                  signaling = pathway)
+  pdf(file = paste0("./data_0424version/",
+                    pathway,
+                    "/dotplot_of_",
+                    pathway,
+                    "_pathway_communication_probabilities_",
+                    "normal.pdf"),
+      width = 15,
+      height = 20)
+  a <- netVisual_bubble(cellchat.normal,
+                        sources.use = NULL,
+                        targets.use = NULL,
+                        pairLR.use = pairLR.use,
+                        remove.isolate = TRUE,
+                        title.name = pathway)
+  print(a)
+  dev.off()
+}
+
+lapply(mainpathways, func)
+```
+
+```{r}
+options(repr.plot.width = 15,
+        repr.plot.height = 20)
+
+func <- function(pathway) {
+  # show all the significant interactions (L-R pairs) based on user"s input (defined by `pairLR.use`)
+  pairLR.use <- extractEnrichedLR(cellchat.bpd,
+                                  signaling = pathway)
+  pdf(file = paste0("./data_0424version/",
+                    pathway,
+                    "/dotplot_of_",
+                    pathway,
+                    "_pathway_communication_probabilities_",
+                    "bpd.pdf"),
+      width = 15,
+      height = 20)
+  a <- netVisual_bubble(cellchat.bpd,
+                        sources.use = NULL,
+                        targets.use = NULL,
+                        pairLR.use = pairLR.use,
+                        remove.isolate = TRUE,
+                        title.name = pathway)
+  print(a)
+  dev.off()
+}
+
+lapply(mainpathwaysbpd, func)
+```
+
+```{r}
+options(repr.plot.width = 15,
+        repr.plot.height = 20)
+
+func <- function(pathway) {
+  # show all the significant interactions (L-R pairs) based on user"s input (defined by `pairLR.use`)
+  pairLR.use <- extractEnrichedLR(cellchat.bpdph,
+                                  signaling = pathway)
+  pdf(file = paste0("./data_0424version/",
+                    pathway,
+                    "/dotplot_of_",
+                    pathway,
+                    "_pathway_communication_probabilities_",
+                    "bpd_ph.pdf"),
+      width = 15,
+      height = 20)
+  a <- netVisual_bubble(cellchat.bpdph,
+                        sources.use = NULL,
+                        targets.use = NULL,
+                        pairLR.use = pairLR.use,
+                        remove.isolate = TRUE,
+                        title.name = pathway)
+  print(a)
+  dev.off()
+}
+
+lapply(mainpathwaysbpdph, func)
+
+
+pairLR.use <- extractEnrichedLR(cellchat.bpdph,
+                                signaling = mainpathwaysbpdph)
+pdf(file = paste0("./data_0424version",
+                  "/dotplot_of_abCap_as_target_communication_probabilities_",
+                  "bpd_ph.pdf"),
+    width = 15,
+    height = 20)
+b <- netVisual_bubble(cellchat.bpdph,
+                      sources.use = NULL,
+                      targets.use = c("abCap"),
+                      pairLR.use = pairLR.use,
+                      remove.isolate = TRUE,
+                      title.name = "abCap_as_target")
+print(b)
+dev.off()
+pdf(file = paste0("./data_0424version",
+                  "/dotplot_of_abCap_as_source_communication_probabilities_",
+                  "bpd_ph.pdf"),
+    width = 15,
+    height = 20)
+c <- netVisual_bubble(cellchat.bpdph,
+                      sources.use = c("abCap"),
+                      targets.use = NULL,
+                      pairLR.use = pairLR.use,
+                      remove.isolate = TRUE,
+                      title.name = "abCap_as_source")
+print(c)
+dev.off()
+```
+
+Plot the signaling gene expression distribution using violin/dot plot
+
+```{r}
+func <- function(pathway) {
+  pdf(file = paste0("./data_0424version/",
+                    pathway,
+                    "/violinplot_of_",
+                    pathway,
+                    "_gene_expression_distribution_of_signaling_genes_",
+                    "normal.pdf"),
+      width = 15,
+      height = 20)
+  a <- plotGeneExpression(cellchat.normal,
+                          signaling = pathway)
+  print(a)
+  dev.off()
+}
+lapply(mainpathways, func)
+```
+
+```{r}
+func <- function(pathway) {
+  pdf(file = paste0("./data_0424version/",
+                    pathway,
+                    "/violinplot_of_",
+                    pathway,
+                    "_gene_expression_distribution_of_signaling_genes_",
+                    "bpd.pdf"),
+      width = 15, height = 20)
+  a <- plotGeneExpression(cellchat.bpd,
+                          signaling = pathway)
+  print(a)
+  dev.off()
+}
+lapply(mainpathwaysbpd, func)
+```
+
+```{r}
+func <- function(pathway) {
+  pdf(file = paste0("./data_0424version/",
+                    pathway,
+                    "/violinplot_of_",
+                    pathway, "_gene_expression_distribution_of_signaling_genes_",
+                    "bpd_ph.pdf"),
+      width = 15,
+      height = 20)
+  a <- plotGeneExpression(cellchat.bpdph,
+                          signaling = pathway)
+  print(a)
+  dev.off()
+}
+lapply(mainpathwaysbpdph, func)
+```
+
+Identify signaling roles (e.g., dominant senders, receivers) of cell groups as well as the major contributing signaling
+
+Compute and visualize the network centrality scores
+
+```{r}
+dev.off()
+dev.off()
+```
+
+```{r}
+# Compute the network centrality scores
+cellchat.normal <- netAnalysis_computeCentrality(cellchat.normal,
+                                                 slot.name = "netP")
+
+func <- function(pathway) {
+  # Visualize the computed centrality scores using heatmap, allowing ready identification of major signaling roles of cell groups
+  pdf(file = paste0("./data_0424version/",
+                    pathway,
+                    "/heatmap_of_",
+                    pathway,
+                    "_major_signaling_roles_celltype_",
+                    "normal.pdf"),
+      width = 8,
+      height = 10)
+  a <- netAnalysis_signalingRole_network(cellchat.normal,
+                                         signaling = pathway,
+                                         width = 8,
+                                         height = 2.5,
+                                         font.size = 10)
+  print(a)
+  dev.off()
+}
+lapply(mainpathways, func)
+```
+
+```{r}
+# Compute the network centrality scores
+cellchat.bpd <- netAnalysis_computeCentrality(cellchat.bpd,
+                                              slot.name = "netP")
+
+func <- function(pathway) {
+  # Visualize the computed centrality scores using heatmap, allowing ready identification of major signaling roles of cell groups
+  pdf(file = paste0("./data_0424version/",
+                    pathway,
+                    "/heatmap_of_",
+                    pathway,
+                    "_major_signaling_roles_celltype_",
+                    "bpd.pdf"),
+      width = 8,
+      height = 10)
+  a <- netAnalysis_signalingRole_network(cellchat.bpd,
+                                         signaling = pathway,
+                                         width = 8,
+                                         height = 2.5,
+                                         font.size = 10)
+  print(a)
+  dev.off()
+}
+lapply(mainpathwaysbpd, func)
+```
+
+```{r}
+# Compute the network centrality scores
+cellchat.bpdph <- netAnalysis_computeCentrality(cellchat.bpdph,
+                                                slot.name = "netP")
+
+func <- function(pathway) {
+  # Visualize the computed centrality scores using heatmap, allowing ready identification of major signaling roles of cell groups
+  pdf(file = paste0("./data_0424version/",
+                    pathway,
+                    "/heatmap_of_",
+                    pathway,
+                    "_major_signaling_roles_celltype_",
+                    "bpd_ph.pdf"),
+      width = 8,
+      height = 10)
+  a <- netAnalysis_signalingRole_network(cellchat.bpdph,
+                                         signaling = pathway,
+                                         width = 8,
+                                         height = 2.5,
+                                         font.size = 10)
+  print(a)
+  dev.off()
+}
+lapply(mainpathwaysbpdph, func)
+```
+
+```{r}
+cellchat.normal@data.signaling
+```
+
+Identify signals contributing most to outgoing or incoming signaling of certain cell groups
+
+```{r}
+options(repr.plot.width = 15, repr.plot.height = 20)
+# Signaling role analysis on the aggregated cell-cell communication network from all signaling pathways
+pdf(file = paste0("./data_0424version/heatmap_of_outgoing_signals_per_celltype_", "normal.pdf"), width = 15, height = 20)
+ht1 <- netAnalysis_signalingRole_heatmap(cellchat.normal, signaling = mainpathways, pattern = "outgoing", width = 20, height = 40, font.size = 14, font.size.title = 20)
+ComplexHeatmap::draw(ht1)
+dev.off()
+pdf(file = paste0("./data_0424version/heatmap_of_incoming_signals_per_celltype_", "normal.pdf"), width = 15, height = 20)
+ht2 <- netAnalysis_signalingRole_heatmap(cellchat.normal, signaling = mainpathways, pattern = "incoming", width = 20, height = 40, font.size = 14, font.size.title = 20)
+ComplexHeatmap::draw(ht2)
+dev.off()
+```
+
+```{r}
+options(repr.plot.width = 15, repr.plot.height = 20)
+# Signaling role analysis on the aggregated cell-cell communication network from all signaling pathways
+pdf(file = paste0("./data_0424version/heatmap_of_outgoing_signals_per_celltype_", "bpd.pdf"), width = 15, height = 20)
+ht1 <- netAnalysis_signalingRole_heatmap(cellchat.bpd, signaling = mainpathwaysbpd, pattern = "outgoing", width = 20, height = 40, font.size = 14, font.size.title = 20)
+ComplexHeatmap::draw(ht1)
+dev.off()
+pdf(file = paste0("./data_0424version/heatmap_of_incoming_signals_per_celltype_", "bpd.pdf"), width = 15, height = 20)
+ht2 <- netAnalysis_signalingRole_heatmap(cellchat.bpd, signaling = mainpathwaysbpd, pattern = "incoming", width = 20, height = 40, font.size = 14, font.size.title = 20)
+ComplexHeatmap::draw(ht2)
+dev.off()
+```
+
+```{r}
+options(repr.plot.width = 5, repr.plot.height = 5)
+# Signaling role analysis on the aggregated cell-cell communication network from all signaling pathways
+pdf(file = paste0("./data_0424version/heatmap_of_outgoing_signals_per_celltype_", "normal_sema.pdf"), width = 15, height = 20)
+ht1 <- netAnalysis_signalingRole_heatmap(cellchat.normal, signaling = c("SEMA3", "SEMA4", "SEMA5", "SEMA6"), pattern = "outgoing", width = 10, height = 10, font.size = 14, font.size.title = 20)
+ComplexHeatmap::draw(ht1)
+dev.off()
+pdf(file = paste0("./data_0424version/heatmap_of_incoming_signals_per_celltype_", "normal_sema.pdf"), width = 15, height = 20)
+ht2 <- netAnalysis_signalingRole_heatmap(cellchat.normal, signaling = c("SEMA3", "SEMA4", "SEMA5", "SEMA6"), pattern = "incoming", width = 10, height = 10, font.size = 14, font.size.title = 20)
+ComplexHeatmap::draw(ht2)
+dev.off()
+
+pdf(file = paste0("./data_0424version/heatmap_of_outgoing_signals_per_celltype_", "bpd_sema.pdf"), width = 15, height = 20)
+ht1 <- netAnalysis_signalingRole_heatmap(cellchat.bpd, signaling = c("SEMA3", "SEMA4", "SEMA5", "SEMA6"), pattern = "outgoing", width = 10, height = 10, font.size = 14, font.size.title = 20)
+ComplexHeatmap::draw(ht1)
+dev.off()
+pdf(file = paste0("./data_0424version/heatmap_of_incoming_signals_per_celltype_", "bpd_sema.pdf"), width = 15, height = 20)
+ht2 <- netAnalysis_signalingRole_heatmap(cellchat.bpd, signaling = c("SEMA3", "SEMA4", "SEMA5", "SEMA6"), pattern = "incoming", width = 10, height = 10, font.size = 14, font.size.title = 20)
+ComplexHeatmap::draw(ht2)
+dev.off()
+```
+
+```{r}
+dev.off()
+```
+
+```{r}
+options(repr.plot.width = 15, repr.plot.height = 20)
+# Signaling role analysis on the aggregated cell-cell communication network from all signaling pathways
+pdf(file = paste0("./data_0424version/heatmap_of_outgoing_signals_per_celltype_", "bpd_ph.pdf"), width = 15, height = 20)
+ht1 <- netAnalysis_signalingRole_heatmap(cellchat.bpdph, signaling = mainpathwaysbpdph, pattern = "outgoing", width = 20, height = 40, font.size = 14, font.size.title = 20)
+ComplexHeatmap::draw(ht1)
+dev.off()
+pdf(file = paste0("./data_0424version/heatmap_of_incoming_signals_per_celltype_", "bpd_ph.pdf"), width = 15, height = 20)
+ht2 <- netAnalysis_signalingRole_heatmap(cellchat.bpdph, signaling = mainpathwaysbpdph, pattern = "incoming", width = 20, height = 40, font.size = 14, font.size.title = 20)
+ComplexHeatmap::draw(ht2)
+dev.off()
+```
+
+```{r}
+options(repr.plot.width = 15, repr.plot.height = 20)
+# Signaling role analysis on the aggregated cell-cell communication network from all signaling pathways
+pdf(file = paste0("./data_0424version/heatmap_of_outgoing_signals_per_celltype_", "preterm_ph.pdf"), width = 15, height = 20)
+ht1 <- netAnalysis_signalingRole_heatmap(cellchat.pretermph, signaling = mainpathwayspretermph, pattern = "outgoing", width = 20, height = 40, font.size = 14, font.size.title = 20)
+ComplexHeatmap::draw(ht1)
+dev.off()
+pdf(file = paste0("./data_0424version/heatmap_of_incoming_signals_per_celltype_", "preterm_ph.pdf"), width = 15, height = 20)
+ht2 <- netAnalysis_signalingRole_heatmap(cellchat.pretermph, signaling = mainpathwayspretermph, pattern = "incoming", width = 20, height = 40, font.size = 14, font.size.title = 20)
+ComplexHeatmap::draw(ht2)
+dev.off()
+```
+
+```{r}
+dev.off()
+dev.off()
+dev.off()
+dev.off()
+```
+
+Save the CellChat object
+
+```{r}
+saveRDS(cellchat.normal, file = "./cellchat_normal_inference_0424version.rds")
+saveRDS(cellchat.bpd, file = "./cellchat_bpd_inference_0424version.rds")
+saveRDS(cellchat.bpdph, file = "./cellchat_bpd_ph_inference_0424version.rds")
+saveRDS(cellchat.pretermph, file = "./cellchat_preterm_ph_inference_0424version.rds")
+```
+
+# Custom Cellchat Analysis
+
+```{r}
+scPalette(11)
+```
+
+```{r}
+cellchat.normal
+```
+
+```{r}
+# Signaling role analysis on the aggregated cell-cell communication network from all signaling pathways
+gg1 <- netAnalysis_signalingRole_scatter(cellchat.normal, signaling = c("SEMA3"))
+#> Signaling role analysis on the aggregated cell-cell communication network from all signaling pathways
+# Signaling role analysis on the cell-cell communication networks of interest
+gg2 <- netAnalysis_signalingRole_scatter(cellchat.normal, signaling = c("SEMA6"))
+#> Signaling role analysis on the cell-cell communication network from user"s input
+gg1
+gg2
+```
+
+```{r}
+# Signaling role analysis on the aggregated cell-cell communication network from all signaling pathways
+gg11 <- netAnalysis_signalingRole_scatter(cellchat.bpd, signaling = c("SEMA3"))
+#> Signaling role analysis on the aggregated cell-cell communication network from all signaling pathways
+# Signaling role analysis on the cell-cell communication networks of interest
+gg22 <- netAnalysis_signalingRole_scatter(cellchat.bpd, signaling = c("SEMA6"))
+#> Signaling role analysis on the cell-cell communication network from user"s input
+gg11
+gg22
+```
+
+```{r}
+# Signaling role analysis on the aggregated cell-cell communication network from all signaling pathways
+gg111 <- netAnalysis_signalingRole_scatter(cellchat.bpdph, signaling = c("SEMA3"))
+#> Signaling role analysis on the aggregated cell-cell communication network from all signaling pathways
+# Signaling role analysis on the cell-cell communication networks of interest
+gg222 <- netAnalysis_signalingRole_scatter(cellchat.bpdph, signaling = c("SEMA6"))
+#> Signaling role analysis on the cell-cell communication network from user"s input
+gg111
+gg222
+```
+
+```{r}
+aggregateNet(cellchat.bpdph, signaling = c("SEMA3"), return.object = FALSE, remove.isolate = TRUE)
+```
+
+```{r}
+object.normal = cellchat.normal
+object.bpd = cellchat.bpd
+object.bpdph = cellchat.bpdph
+color <- c("#E41A1C","#377EB8","#4DAF4A","#F29403","#F781BF","#BC9DCC","#A65628","#54B0E4","#222F75","#1B9E77")
+color.use = color
+color.use.bpdph = c("#E41A1C","#377EB8","#4DAF4A","#984EA3","#F29403","#F781BF","#BC9DCC","#A65628","#54B0E4","#222F75","#1B9E77")
+color.use.bpdph.graph = c("#E41A1C","#377EB8","#4DAF4A","#F29403","#F781BF","#BC9DCC","#A65628","#54B0E4","#222F75","#1B9E77","#984EA3")
+slot.name = "netP"
+group = NULL
+weight.MinMax = NULL
+dot.size = c(2, 6)
+point.shape = c(21, 22, 24, 23, 25, 8, 3)
+label.size = 3
+dot.alpha = 0.6
+x.measure = "outdeg"
+y.measure = "indeg"
+xlabel = "Outgoing interaction strength"
+ylabel = "Incoming interaction strength"
+title = NULL
+font.size = 10
+font.size.title = 10
+do.label = TRUE
+show.legend = TRUE
+show.axes = TRUE
+```
+
+```{r}
+centr.normal <- slot(object.normal, slot.name)$centr
+centr.bpd <- slot(object.bpd, slot.name)$centr
+centr.bpdph <- slot(object.bpdph, slot.name)$centr
+```
+
+```{r}
+outgoing.normal <- matrix(0, nrow = nlevels(object.normal@idents), ncol = length(centr.normal))
+incoming.normal <- matrix(0, nrow = nlevels(object.normal@idents), ncol = length(centr.normal))
+dimnames(outgoing.normal) <- list(levels(object.normal@idents), names(centr.normal))
+dimnames(incoming.normal) <- dimnames(outgoing.normal)
+
+outgoing.bpd <- matrix(0, nrow = nlevels(object.bpd@idents), ncol = length(centr.bpd))
+incoming.bpd <- matrix(0, nrow = nlevels(object.bpd@idents), ncol = length(centr.bpd))
+dimnames(outgoing.bpd) <- list(levels(object.bpd@idents), names(centr.bpd))
+dimnames(incoming.bpd) <- dimnames(outgoing.bpd)
+
+outgoing.bpdph <- matrix(0, nrow = nlevels(object.bpdph@idents), ncol = length(centr.bpdph))
+incoming.bpdph <- matrix(0, nrow = nlevels(object.bpdph@idents), ncol = length(centr.bpdph))
+dimnames(outgoing.bpdph) <- list(levels(object.bpdph@idents), names(centr.bpdph))
+dimnames(incoming.bpdph) <- dimnames(outgoing.bpdph)
+```
+
+```{r}
+for (i in 1:length(centr.normal)) {
+  outgoing.normal[,i] <- centr.normal[[i]][[x.measure]]
+  incoming.normal[,i] <- centr.normal[[i]][[y.measure]]
+}
+for (i in 1:length(centr.bpd)) {
+  outgoing.bpd[,i] <- centr.bpd[[i]][[x.measure]]
+  incoming.bpd[,i] <- centr.bpd[[i]][[y.measure]]
+}
+for (i in 1:length(centr.bpdph)) {
+  outgoing.bpdph[,i] <- centr.bpdph[[i]][[x.measure]]
+  incoming.bpdph[,i] <- centr.bpdph[[i]][[y.measure]]
+}
+```
+
+```{r}
+outgoing.normal
+```
+
+```{r}
+outgoing.bpd
+```
+
+```{r}
+outgoing.cells.normal <- rowSums(outgoing.normal)
+incoming.cells.normal <- rowSums(incoming.normal)
+
+outgoing.cells.bpd <- rowSums(outgoing.bpd)
+incoming.cells.bpd <- rowSums(incoming.bpd)
+
+outgoing.cells.bpdph <- rowSums(outgoing.bpdph)
+incoming.cells.bpdph <- rowSums(incoming.bpdph)
+```
+
+```{r}
+outgoing.cells.normal
+```
+
+```{r}
+num.link.normal <- aggregateNet(object.normal, signaling = NULL, return.object = FALSE, remove.isolate = FALSE)$count
+num.link.normal <- rowSums(num.link.normal) + colSums(num.link.normal)-diag(num.link.normal)
+
+num.link.bpd <- aggregateNet(object.bpd, signaling = NULL, return.object = FALSE, remove.isolate = FALSE)$count
+num.link.bpd <- rowSums(num.link.bpd) + colSums(num.link.bpd)-diag(num.link.bpd)
+
+num.link.bpdph <- aggregateNet(object.bpdph, signaling = NULL, return.object = FALSE, remove.isolate = FALSE)$count
+num.link.bpdph <- rowSums(num.link.bpdph) + colSums(num.link.bpdph)-diag(num.link.bpdph)
+```
+
+```{r}
+df.normal <- data.frame(x = outgoing.cells.normal, y = incoming.cells.normal, labels = names(incoming.cells.normal),
+                 Count = num.link.normal)
+
+df.bpd <- data.frame(x = outgoing.cells.bpd, y = incoming.cells.bpd, labels = names(incoming.cells.bpd),
+                 Count = num.link.bpd)
+
+df.bpdph <- data.frame(x = outgoing.cells.bpdph, y = incoming.cells.bpdph, labels = names(incoming.cells.bpdph),
+                 Count = num.link.bpdph)
+```
+
+```{r}
+df.normal
+```
+
+```{r}
+df.normal$labels <- factor(df.normal$labels, levels = names(incoming.cells.normal))
+
+df.bpd$labels <- factor(df.bpd$labels, levels = names(incoming.cells.bpd))
+
+df.bpdph$labels <- factor(df.bpdph$labels, levels = names(incoming.cells.bpdph))
+```
+
+```{r}
+combined <- rbind(df.normal, df.bpd, df.bpdph)
+```
+
+```{r}
+combined
+```
+
+```{r}
+gg <- ggplot() +
+  geom_point(data = df.normal, aes(x, y, colour = labels), size = 6) +
+  scale_colour_manual(values = color.use, drop = FALSE) +
+  labs(colour = "Normal") +
+  ggnewscale::new_scale("colour") +
+  geom_point(data = df.bpd, aes(x, y, colour = labels), size = 6, shape=17) +
+  scale_colour_manual(values = color.use, drop = FALSE) +
+  labs(colour = "BPD") +
+  ggnewscale::new_scale("colour") +
+  geom_point(data = df.bpdph, aes(x, y, colour = labels), size = 6, shape=15) +
+  scale_colour_manual(values = color.use.bpdph, drop = FALSE) +
+  labs(colour = "BPD + PH")
+gg
+```
+
+```{r}
+gg <- gg + CellChat_theme_opts() +
+  theme(legend.key.height = grid::unit(0.15, "in"),
+        axis.title = element_text(size = 16),
+        axis.text = element_text(size = 12),
+        legend.text = element_text(size = 12)) +
+  labs(title = title, x = xlabel, y = ylabel) + theme(plot.title = element_text(size= font.size.title, face="plain"))+
+  theme(axis.line.x = element_line(size = 0.25), axis.line.y = element_line(size = 0.25)) +
+  scale_fill_manual(values = ggplot2::alpha(color.use.bpdph, alpha = dot.alpha), drop = FALSE) + guides(fill=FALSE) +
+  geom_text(data = combined, mapping = aes(x = x, y = y + 0.5, label = labels), colour = "black", size = 4, show.legend = FALSE,segment.size = 0.2, segment.alpha = 0.5, max.overlaps = 12)
+gg
+```
+
+```{r}
+getwd()
+```
+
+```{r}
+gridExtra::grid.arrange(egg::set_panel_size(p=gg, width=unit(50, "cm"), height=unit(50, "cm")))
+ggsave("../data/figures/all/cellchatsendersreceivers.pdf",
+       egg::set_panel_size(p=gg, width=unit(30, "cm"), height=unit(30, "cm")),
+       dpi = 450, bg = "transparent",
+       width=unit(12, "cm"), height=unit(20, "cm"))
+a <- 3
+```
+
+```{r}
+options(repr.plot.width = 5, repr.plot.height = 5)
+# Signaling role analysis on the aggregated cell-cell communication network from all signaling pathways normal
+pdf(file = paste0("./data_0424version/sema_fig/heatmap_of_all_signals_per_celltype_", "normal_sema.pdf"), width = 15, height = 20)
+ht1 <- netAnalysis_signalingRole_heatmap(cellchat.normal, signaling = c("SEMA3", "SEMA6"), pattern = "all", width = 10, height = 10, font.size = 14, font.size.title = 20)
+ComplexHeatmap::draw(ht1)
+dev.off()
+
+# Signaling role analysis on the aggregated cell-cell communication network from all signaling pathways bpd
+pdf(file = paste0("./data_0424version/sema_fig/heatmap_of_all_signals_per_celltype_", "bpd_sema.pdf"), width = 15, height = 20)
+ht2 <- netAnalysis_signalingRole_heatmap(cellchat.bpd, signaling = c("SEMA3", "SEMA6"), pattern = "all", width = 10, height = 10, font.size = 14, font.size.title = 20)
+ComplexHeatmap::draw(ht2)
+dev.off()
+
+# Signaling role analysis on the aggregated cell-cell communication network from all signaling pathways bpd ph
+pdf(file = paste0("./data_0424version/sema_fig/heatmap_of_all_signals_per_celltype_", "bpdph_sema.pdf"), width = 15, height = 20)
+ht3 <- netAnalysis_signalingRole_heatmap(cellchat.bpdph, signaling = c("SEMA3", "SEMA6"), pattern = "all", width = 10, height = 10, font.size = 14, font.size.title = 20)
+ComplexHeatmap::draw(ht3)
+dev.off()
+```
+

@@ -1,0 +1,303 @@
+---
+title: "scRNA-seq Neonatal Lung Injury 2.4"
+author: Shawyon Shirazi & Nick Negretti
+date: 3/15/24
+output: rmarkdown::github_document
+---
+
+# Analysis of the lung immune
+
+## Load libraries and helper functions
+```{r, results="hide", message = FALSE, load-libraries}
+source("./helper_functions/globals.R")
+source("./helper_functions/libraries.R")
+source("./helper_functions/cluster.R")
+source("./helper_functions/colors.R")
+
+N_WORKERS <- 12
+plan("multicore", workers = N_WORKERS)
+```
+
+```{r}
+imm <- readRDS("./data/checkpoint/post_sct_split_imm.rds")
+```
+
+```{r}
+N_WORKERS <- 20
+plan("multicore", workers = N_WORKERS)
+imm_sct <- SCTransform(imm,
+                       variable.features.n = 2000,
+                       batch_var = "dataset",
+                       conserve.memory = TRUE,
+                       vars.to.regress = c("percent.mt",
+                                           "percent.rb"),
+                       method = "glmGamPoi",
+                       ncells = NULL)
+```
+
+```{r}
+imm_metric <- VlnPlot(imm_sct,
+                      features = c("nFeature_RNA",
+                                   "nCount_RNA",
+                                   "percent.mt"),
+                      group.by = "condition")
+ggsave("./data/checkpoint/imm/metric_testing.png",
+       plot = imm_metric)
+```
+
+## UMAP and clustering pt1
+```{r, fig.width = 12}
+imm_sct <- cluster_pca_umap(imm_sct,
+                            k_param = 10,
+                            dims_umap = 1:15,
+                            dims_neighbors = 1:15,
+                            cluster_res = 1.2,
+                            harmony = TRUE,
+                            harmonysigma = 0.4)
+
+p_cluster <- DimPlot(imm_sct,
+                     label = TRUE) +
+             umap_theme() +
+             theme(aspect.ratio = 1)
+
+imm_cluster <- p_cluster +
+               plot_annotation("Immune")
+ggsave("./data/checkpoint/imm/cluster1.png",
+       plot = imm_cluster)
+```
+
+```{r}
+marker_genes <- c("EPCAM", "PECAM1", "PTPRC", "COL1A1", # Broad subtype
+                  "CD3E", "IL7R", "CD8A", "CCL5", "THEMIS", "CD6",  # T Cell
+                  "NCR1", "KLRB1", "NKG7", "FGFBP2", "SH2D1B", "MCTP2", # NK Cell
+                  "LYZ", "MARCO", "FCGR1A", "C1QA", "APOC1", # Macrophage
+                  "S100A12", "FCN1", "CD14", "VCAN", "ITGAX", "ITGAM", # Monocyte
+                  "CLEC4C","FCER1A", "CD1C", "SIPA1L3", "HDAC9", "FCGR2B", "CLEC10A", "FOXN3", # DC
+                  "MS4A1", "CD19", "CD79A", "VPREB3", "FCRL1", "EBF1", "BCL11A", "IGHM", "IGHG1", # B Cell
+                  "CPA3", "KIT", "TPSD1", "GATA2", "MS4A2", # Mast Cell
+                  "GPD1", "PPIC", "AMIGO2", "RBP4", "CES1", "TREM1", "CD52", # Alveolar macrophage
+                  "S100A9", "S100A8") # Neutrophil
+imm_markers <- DotPlot(imm_sct,
+                       features = marker_genes) +
+               theme(axis.text.x = element_text(angle = 45,
+                                                hjust = 1))
+ggsave("./data/checkpoint/imm/markers1.pdf",
+       plot = imm_markers,
+       width = 25)
+```
+
+```{r metrics}
+vlnplot_metrics <- VlnPlot(imm_sct,
+                           features = c("nCount_RNA",
+                                        "nCount_SCT",
+                                        "percent.mt",
+                                        "percent.rb"),
+                           group.by = "seurat_clusters")
+ggsave("./data/checkpoint/imm/metrics1.png",
+       plot = vlnplot_metrics,
+       width = 20)
+DimPlot(imm_sct,
+        group.by = "broad_condition")
+```
+
+```{r}
+imm_sub_sct <- subset(imm_sct,
+                      idents = c(10, 32),
+                      invert = TRUE)
+```
+
+```{r}
+N_WORKERS <- 20
+plan("multicore", workers = N_WORKERS)
+imm_sub_sct2 <- SCTransform(imm_sub_sct,
+                            variable.features.n = 2000,
+                            batch_var = "dataset",
+                            conserve.memory = TRUE,
+                            vars.to.regress = c("percent.mt",
+                                                "percent.rb"),
+                            method = "glmGamPoi",
+                            ncells = NULL)
+```
+
+## UMAP and clustering pt2
+```{r}
+var_feat_backup_imm_sub <- VariableFeatures(imm_sub_sct2)
+
+imm_sub_sct2 <- cluster_pca_umap(imm_sub_sct2,
+                                 k_param = 10,
+                                 dims_umap = 1:15,
+                                 dims_neighbors = 1:15,
+                                 cluster_res = 1.5,
+                                 harmonysigma = 0.4)
+```
+
+```{r}
+p_cluster <- DimPlot(imm_sub_sct2,
+                     label = TRUE) +
+             umap_theme() +
+             theme(aspect.ratio = 1)
+
+imm_cluster3 <- p_cluster +
+                plot_annotation("Immune")
+ggsave("./data/checkpoint/imm/cluster2.png")
+```
+
+```{r}
+marker_genes <- c("EPCAM", "PECAM1", "PTPRC", "COL1A1",
+                  "CD3E", "IL7R", "CD8A", "CCL5", "THEMIS", "CD6",
+                  "NCR1", "KLRB1", "NKG7", "FGFBP2", "SH2D1B", "MCTP2",
+                  "LYZ", "MARCO", "FCGR1A", "C1QA", "APOC1",
+                  "S100A12", "FCN1", "CD14", "VCAN", "ITGAX", "ITGAM",
+                  "CLEC4C","FCER1A", "CD1C", "SIPA1L3", "HDAC9", "FCGR2B", "CLEC10A", "FOXN3",
+                  "MS4A1", "CD19", "CD79A", "VPREB3", "FCRL1", "EBF1", "BCL11A", "IGHM", "IGHG1",
+                  "CPA3", "KIT", "TPSD1", "GATA2", "MS4A2",
+                  "GPD1", "PPIC", "AMIGO2", "RBP4", "CES1", "TREM1", "CD52",
+                  "S100A9", "S100A8")
+imm_dotplot3 <- DotPlot(imm_sub_sct2,
+                        features = marker_genes) +
+                theme(axis.text.x = element_text(angle = 45,
+                                                 hjust = 1))
+ggsave("./data/checkpoint/imm/markers2.pdf",
+       width = 20)
+```
+
+```{r}
+vlnplot_metrics <- VlnPlot(imm_sub_sct2,
+                           features = c("nCount_RNA",
+                                        "nCount_SCT",
+                                        "percent.mt",
+                                        "percent.rb"),
+                           group.by = "seurat_clusters")
+ggsave("./data/checkpoint/imm/metrics2.png",
+       plot = vlnplot_metrics,
+       width = 15)
+FeaturePlot(imm_sub_sct2,
+            c("CD2"))
+head(FindMarkers(imm_sub_sct2,
+                 31,
+                 NULL),
+     50)
+DimPlot(imm_sub_sct2,
+        group.by = "broad_condition")
+```
+
+## Save the DEgenes per cluster
+```{r}
+N_WORKERS <- 20
+plan("multicore", workers = N_WORKERS)
+filename <- "./data/checkpoint/pre_annotated_imm_for_deg.rds"
+if (!file.exists(filename)) {
+  markers <- parallel_find_all_markers(imm_sub_sct2)
+
+  names(markers) <- levels(Idents(imm_sub_sct2))
+  saveRDS(markers,
+          filename)
+} else {
+  markers <- readRDS(filename)
+}
+wb_markers_names <- levels(Idents(imm_sub_sct2))
+wb_markers <- createWorkbook()
+for (idx in seq_along(wb_markers_names)) {
+  addWorksheet(wb_markers,
+               wb_markers_names[idx])
+  writeData(wb_markers,
+            wb_markers_names[idx],
+            markers[[idx]],
+            rowNames = TRUE)
+}
+saveWorkbook(wb_markers,
+             file = "./data/checkpoint/imm_cluster_deg.xlsx",
+             overwrite = TRUE)
+```
+
+## Annotation
+```{r}
+imm_relabel <- imm_sub_sct2
+imm_relabel$louvain <- as.factor(imm_sub_sct2$seurat_clusters)
+imm_relabel$celltype <- as.factor(imm_sub_sct2$seurat_clusters)
+
+idxes <- levels(imm_relabel$celltype)
+labels <- rep("T Cell", length(levels(imm_relabel$celltype)))
+labels[idxes %in% c(12, 14, 22, 32)] <- "NK Cell"
+labels[idxes %in% c(27, 28, 30)] <- "NKT Cell"
+labels[idxes %in% c(37)] <- "Alveolar macrophage"
+labels[idxes %in% c(10, 15, 24, 25, 36)] <- "Monocyte"
+labels[idxes %in% c(11)] <- "pDC"
+labels[idxes %in% c(29, 31)] <- "cDC"
+labels[idxes %in% c(3, 7)] <- "B Cell"
+labels[idxes %in% c(38)] <- "Mast cell"
+labels[idxes %in% c(33)] <- "Basophil"
+labels[idxes %in% c(39)] <- "Plasma cell"
+labels[idxes %in% c(17)] <- "Neutrophil"
+
+levels(imm_relabel$celltype) <- labels
+Idents(imm_relabel) <- imm_relabel$celltype
+```
+
+```{r}
+imm_relabel$celltype <- ordered(as.factor(imm_relabel$celltype),
+                                c("T Cell",
+                                  "NK Cell",
+                                  "NKT Cell",
+                                  "Alveolar macrophage",
+                                  "Monocyte",
+                                  "pDC",
+                                  "cDC",
+                                  "B Cell",
+                                  "Mast cell",
+                                  "Plasma cell",
+                                  "Basophil",
+                                  "Neutrophil"
+                                ))
+
+```
+
+## Save data for next step merge
+```{r}
+plan("multicore", workers = N_WORKERS)
+filename <- "./data/checkpoint/annotated_imm.rds"
+if (!file.exists(filename)) {
+  saveRDS(imm_relabel,
+          filename,
+          compress = "gzip")
+}
+```
+
+## Save h5ad for cellxgene visualization
+```{r}
+writeAnnData <- function(seurat_obj, filename) {
+
+  anndata::AnnData(X = t(GetAssayData(seurat_obj,
+                                      slot = "data",
+                                      assay = "SCT")),
+    var = data.frame(gene = rownames(seurat_obj),
+                     row.names = rownames(seurat_obj)),
+    obs = data.frame(louvain = as.character(Idents(seurat_obj)),
+                     dataset = as.character(seurat_obj$dataset),
+                     seq_run = as.character(seurat_obj$orig.ident),
+                     age = as.character(seurat_obj$age),
+                     condition = as.character(seurat_obj$condition),
+                     annotation = as.character(seurat_obj$celltype),
+                     broad_condition = as.character(seurat_obj$broad_condition),
+                     row.names = colnames(seurat_obj),
+                     total_counts = as.numeric(seurat_obj$nCount_SCT),
+                     pct_mito = as.numeric(seurat_obj$percent.mt),
+                     pct_ribo = as.numeric(seurat_obj$percent.rb)),
+    obsm = list(X_umap = matrix(Embeddings(seurat_obj,
+                                           reduction = "umap"),
+                                ncol = 2)),
+    raw = anndata::AnnData(X = t(GetAssayData(seurat_obj,
+                                              slot = "counts",
+                                              assay = "RNA")),
+                           var = data.frame(gene = rownames(seurat_obj@assays$RNA),
+                                            row.names = rownames(seurat_obj@assays$RNA)))
+  )$write_h5ad(filename, compression = "gzip")
+
+}
+
+filename <- "./data/checkpoint/imm_only.h5ad"
+if (!file.exists(filename)) { # Create if doesn't exist
+  writeAnnData(imm_relabel,
+               filename)
+}
+```

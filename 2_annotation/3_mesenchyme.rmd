@@ -1,0 +1,389 @@
+---
+title: "scRNA-seq Neonatal Lung Injury 2.3"
+author: Shawyon Shirazi & Nick Negretti
+date: 3/15/24
+output: rmarkdown::github_document
+---
+
+# Analysis of the lung mesenchyme
+
+## Load libraries and helper functions
+```{r, results="hide", message = FALSE}
+source("./helper_functions/globals.R")
+source("./helper_functions/libraries.R")
+source("./helper_functions/cluster.R")
+source("./helper_functions/colors.R")
+
+N_WORKERS <- 12
+plan("multicore", workers = N_WORKERS)
+```
+## Load data from merge and clean pipeline
+```{r}
+meso <- readRDS("./data/checkpoint/post_sct_split_meso.rds")
+```
+
+## UMAP and clustering pt1
+```{r}
+meso <- cluster_pca_umap(meso,
+                         dims_umap = 1:30,
+                         dims_neighbors = 1:30,
+                         cluster_res = 1,
+                         harmonysigma = 0.25,
+                         harmonylambda = 2)
+```
+
+```{r, fig.width = 12}
+p_cluster <- DimPlot(meso,
+                     label = TRUE) +
+             theme(aspect.ratio = 1)
+
+meso_cluster <- p_cluster +
+                plot_annotation("Mesenchyme")
+ggsave("./data/checkpoint/meso/cluster1.png",
+       plot = meso_cluster)
+
+```
+
+```{r}
+marker_genes <- c("EPCAM", "PECAM1", "PTPRC", # Broad subtype
+                  "COL1A1", "COL1A2", # Mesenchymal specific
+                  "ACTA2", "PDGFRB", "ACTG2", "MYH11", # SMC
+                  "CNN1", "ITGA7", # Vascular SMC
+                  "DES", "LGR6", # Airway SMC
+                  "TCF21", "WNT2", "NPNT", "INMT", # Alveolar FB
+                  "CTHRC1", "POSTN", # Activated FB
+                  "SERPINF1", "PI16", "MFAP5", "SCARA5", #Adventitial FB
+                  "WNT5A", "FGF18", "PDGFRA", "HHIP", # MyoFB
+                  "COX4I2", "CSPG4", "LAMC3", "TRPC6", # Pericyte
+                  "MKI67", "TOP2A", "CDC20", "TBX4") # Prolif and extra
+meso_markers <- DotPlot(meso,
+                        features = marker_genes) +
+                theme(axis.text.x = element_text(angle = 45,
+                                                 hjust = 1))
+ggsave("./data/checkpoint/meso/markers1.pdf",
+       width = 15)
+```
+
+```{r metrics}
+vlnplot_metrics <- VlnPlot(meso,
+                           features = c("nCount_RNA",
+                                        "nCount_SCT",
+                                        "percent.mt",
+                                        "percent.rb"),
+                           group.by = "seurat_clusters")
+ggsave("./data/checkpoint/meso/metrics1.png")
+```
+
+```{r}
+meso_sub <- subset(meso,
+                   idents = c(10, 18, 21),
+                   invert = TRUE)
+```
+
+```{r}
+DimPlot(meso_sub)
+```
+
+```{r}
+N_WORKERS <- 20
+plan("multicore", workers = N_WORKERS)
+meso_sub_sct <- SCTransform(meso_sub,
+                            variable.features.n = 2000,
+                            batch_var = "dataset",
+                            conserve.memory = FALSE,
+                            vars.to.regress = c("percent.mt",
+                                                "percent.rb"),
+                            method = "glmGamPoi",
+                            ncells = NULL)
+var_feat_backup2 <- VariableFeatures(meso_sub_sct)
+```
+
+## UMAP and clustering pt2
+```{r, fig.width = 12}
+meso_sub_sct <- cluster_pca_umap(meso_sub_sct,
+                                 k_param = 30,
+                                 dims_umap = 1:50,
+                                 dims_neighbors = 1:50,
+                                 cluster_res = 1,
+                                 harmonysigma = 1)
+
+p_cluster <- DimPlot(meso_sub_sct) +
+             theme(aspect.ratio = 1)
+
+endo_cluster2 <- p_cluster +
+                 plot_annotation("Mesenchyme")
+ggsave("./data/checkpoint/meso/cluster2.png")
+```
+
+```{r}
+marker_genes <- c("EPCAM", "PECAM1", "PTPRC",
+                  "COL1A1", "COL1A2",
+                  "ACTA2", "PDGFRB", "ACTG2", "MYH11",
+                  "CNN1", "ITGA7",
+                  "DES", "LGR6",
+                  "TCF21", "WNT2", "NPNT", "INMT",
+                  "CTHRC1", "POSTN",
+                  "SERPINF1", "PI16", "MFAP5", "SCARA5",
+                  "WNT5A", "FGF18", "PDGFRA", "HHIP",
+                  "COX4I2", "CSPG4", "LAMC3", "TRPC6",
+                  "MKI67", "TOP2A", "CDC20", "TBX4")
+meso_markers2 <- DotPlot(meso_sub_sct,
+                         features = marker_genes) +
+                 theme(axis.text.x = element_text(angle = 45,
+                                                  hjust = 1))
+ggsave("./data/checkpoint/meso/markers2.pdf",
+       width = 15)
+```
+
+
+```{r metrics}
+vlnplot_metrics <- VlnPlot(meso_sub_sct,
+                           features = c("nCount_RNA",
+                                        "nCount_SCT",
+                                        "percent.mt",
+                                        "percent.rb"),
+                           group.by = "seurat_clusters")
+ggsave("./data/checkpoint/meso/metrics2.png", width = 15)
+```
+
+```{r}
+N_WORKERS <- 20
+plan("multicore", workers = N_WORKERS)
+meso_sub_sct2 <- SCTransform(meso_sub_sct,
+                             variable.features.n = 2000,
+                             batch_var = "dataset",
+                             conserve.memory = TRUE,
+                             vars.to.regress = c("percent.mt",
+                                                 "percent.rb"),
+                             method = "glmGamPoi",
+                             ncells = NULL)
+var_feat_backup2 <- VariableFeatures(meso_sub_sct2)
+```
+
+## UMAP and clustering pt3
+```{r, fig.width = 12}
+meso_sub_sct2 <- cluster_pca_umap(meso_sub_sct2,
+                                  k_param = 10,
+                                  dims_umap = 1:30,
+                                  dims_neighbors = 1:30,
+                                  cluster_res = 0.8)
+
+p_cluster <- DimPlot(meso_sub_sct2) +
+             theme(aspect.ratio = 1)
+
+endo_cluster2 <- p_cluster +
+                 plot_annotation("Mesenchyme")
+ggsave("./data/checkpoint/meso/cluster3.png")
+```
+
+```{r}
+marker_genes <- c("EPCAM", "PECAM1", "PTPRC",
+                  "COL1A1", "COL1A2",
+                  "ACTA2", "PDGFRB", "ACTG2", "MYH11",
+                  "CNN1", "ITGA7",
+                  "DES", "LGR6",
+                  "TCF21", "WNT2", "NPNT", "INMT",
+                  "CTHRC1", "POSTN",
+                  "SERPINF1", "PI16", "MFAP5", "SCARA5",
+                  "WNT5A", "FGF18", "PDGFRA", "HHIP",
+                  "COX4I2", "CSPG4", "LAMC3", "TRPC6",
+                  "MKI67", "TOP2A", "CDC20", "TBX4")
+meso_markers2 <- DotPlot(meso_sub_sct2,
+                         features = marker_genes) +
+                 theme(axis.text.x = element_text(angle = 45,
+                                                  hjust = 1))
+ggsave("./data/checkpoint/meso/markers3.pdf",
+       width = 15)
+```
+
+
+```{r metrics}
+vlnplot_metrics <- VlnPlot(meso_sub_sct2,
+                           features = c("nCount_RNA",
+                                        "nCount_SCT",
+                                        "percent.mt",
+                                        "percent.rb"),
+                           group.by = "seurat_clusters")
+ggsave("./data/checkpoint/meso/metrics3.png")
+```
+
+```{r meso newharmony}
+N_WORKERS <- 20
+plan("multicore", workers = N_WORKERS)
+meso_sub_sct3 <- SCTransform(meso_sub_sct2,
+                             variable.features.n = 2000,
+                             batch_var = "dataset",
+                             conserve.memory = FALSE,
+                             vars.to.regress = c("percent.mt",
+                                                 "percent.rb"),
+                             method = "glmGamPoi",
+                             ncells = NULL)
+var_feat_backup2 <- VariableFeatures(meso_sub_sct3)
+```
+
+## UMAP and clustering pt4
+```{r}
+meso_sub_sct3 <- cluster_pca_umap(meso_sub_sct3,
+                                  k_param = 5,
+                                  dims_umap = 1:30,
+                                  dims_neighbors = 1:30,
+                                  cluster_res = 0.8,
+                                  harmonysigma = 0.5)
+
+p_cluster <- DimPlot(meso_sub_sct3,
+                     label = TRUE) +
+             umap_theme() +
+             theme(aspect.ratio = 1)
+
+meso_cluster3 <- p_cluster +
+                 plot_annotation("Mesenchyme")
+ggsave("./data/checkpoint/meso/cluster4.png")
+```
+
+
+```{r}
+marker_genes <- c("EPCAM", "PECAM1", "PTPRC",
+                  "COL1A1", "COL1A2",
+                  "ACTA2", "PDGFRB", "ACTG2", "MYH11",
+                  "CNN1", "ITGA7",
+                  "DES", "LGR6",
+                  "TCF21", "WNT2", "NPNT", "INMT",
+                  "CTHRC1", "POSTN",
+                  "SERPINF1", "PI16", "MFAP5", "SCARA5",
+                  "WNT5A", "FGF18", "PDGFRA", "HHIP",
+                  "COX4I2", "CSPG4", "LAMC3", "TRPC6",
+                  "MKI67", "TOP2A", "CDC20", "TBX4")
+meso_dotplot3 <- DotPlot(meso_sub_sct3,
+                         features = marker_genes) +
+                 theme(axis.text.x = element_text(angle = 45,
+                                                  hjust = 1))
+ggsave("./data/checkpoint/meso/markers4.pdf",
+       width = 15)
+```
+
+
+```{r}
+FeaturePlot(meso_sub_sct3,
+            "CTHRC1")
+DimPlot(meso_sub_sct3,
+        group.by = "celltype")
+```
+
+## Save the DEgenes per cluster
+```{r}
+N_WORKERS <- 20
+plan("multicore", workers = N_WORKERS)
+filename <- "./data/checkpoint/pre_annotated_meso_for_deg.rds"
+if (!file.exists(filename)) {
+  markers <- parallel_find_all_markers(meso_sub_sct3)
+
+  names(markers) <- levels(Idents(meso_sub_sct3))
+  saveRDS(markers,
+          filename)
+} else {
+  markers <- readRDS(filename)
+}
+
+wb_markers_names <- levels(Idents(meso_sub_sct3))
+wb_markers <- createWorkbook()
+for (idx in seq_along(wb_markers_names)) {
+  addWorksheet(wb_markers,
+               wb_markers_names[idx])
+  writeData(wb_markers,
+            wb_markers_names[idx],
+            markers[[idx]],
+            rowNames = TRUE)
+}
+saveWorkbook(wb_markers,
+             file = "./data/checkpoint/meso_cluster_deg.xlsx",
+             overwrite = TRUE)
+```
+
+## Annotation
+```{r}
+meso_relabel <- meso_sub_sct3
+meso_relabel <- subset(meso_relabel,
+                       idents = c(13),
+                       invert = TRUE)
+meso_relabel$louvain <- as.factor(meso_sub_sct3$seurat_clusters)
+meso_relabel$celltype <- as.factor(meso_sub_sct3$seurat_clusters)
+
+
+idxes <- levels(meso_relabel$celltype)
+labels <- rep("Alveolar FB", length(levels(meso_relabel$celltype)))
+labels[idxes %in% c(0)] <- "Ductal MyoFB"
+labels[idxes %in% c(11)] <- "Alveolar MyoFB"
+labels[idxes %in% c(7, 8, 14)] <- "VSMC"
+labels[idxes %in% c(5)] <- "Adventitial FB"
+labels[idxes %in% c(9, 10)] <- "Pericyte"
+labels[idxes %in% c(16)] <- "Activated FB"
+
+levels(meso_relabel$celltype) <- labels
+Idents(meso_relabel) <- meso_relabel$celltype
+```
+
+# Reorder the clusters
+```{r}
+meso_relabel$celltype <- ordered(as.factor(meso_relabel$celltype),
+                                 c("Alveolar FB",
+                                   "Activated FB",
+                                   "Adventitial FB",
+                                   "Alveolar MyoFB",
+                                   "Ductal MyoFB",
+                                   "Pericyte",
+                                   "VSMC"))
+
+```
+
+```{r}
+DimPlot(meso_relabel,
+        group.by = "celltype")
+```
+
+## Save data for next step merge
+```{r}
+plan("multicore", workers = N_WORKERS)
+filename <- "./data/checkpoint/annotated_meso.rds"
+saveRDS(meso_relabel,
+        filename,
+        compress = "gzip")
+
+```
+
+## Save h5ad for cellxgene visualization
+```{r}
+writeAnnData <- function(seurat_obj, filename) {
+
+  anndata::AnnData(X = t(GetAssayData(seurat_obj,
+                                      slot = "data",
+                                      assay = "SCT")),
+    var = data.frame(gene = rownames(seurat_obj),
+                     row.names = rownames(seurat_obj)),
+    obs = data.frame(louvain = as.character(Idents(seurat_obj)),
+                     dataset = as.character(seurat_obj$dataset),
+                     seq_run = as.character(seurat_obj$orig.ident),
+                     age = as.character(seurat_obj$age),
+                     condition = as.character(seurat_obj$condition),
+                     annotation = as.character(seurat_obj$celltype),
+                     broad_condition = as.character(seurat_obj$broad_condition),
+                     row.names = colnames(seurat_obj),
+                     total_counts = as.numeric(seurat_obj$nCount_SCT),
+                     pct_mito = as.numeric(seurat_obj$percent.mt),
+                     pct_ribo = as.numeric(seurat_obj$percent.rb)),
+    obsm = list(X_umap = matrix(Embeddings(seurat_obj,
+                                           reduction = "umap"),
+                                ncol = 2)),
+    raw = anndata::AnnData(X = t(GetAssayData(seurat_obj,
+                                              slot = "counts",
+                                              assay = "RNA")),
+                           var = data.frame(gene = rownames(seurat_obj@assays$RNA),
+                                            row.names = rownames(seurat_obj@assays$RNA)))
+  )$write_h5ad(filename, compression = "gzip")
+
+}
+
+filename <- "./data/checkpoint/meso_only.h5ad"
+
+writeAnnData(meso_relabel,
+             filename)
+```
