@@ -381,6 +381,41 @@ dev.off()
 ```
 
 ```{r}
+# Extract the number of interactions from all three CellChat objects 
+num_interactions_normal <- rowSums(cellchat.normal@net$count)
+num_interactions_bpd <- rowSums(cellchat.bpd@net$count)
+num_interactions_bpdph <- rowSums(cellchat.bpdph@net$count)
+
+# Get the global max across conditions
+global_max <- max(c(num_interactions_normal,
+                    num_interactions_bpd,
+                    num_interactions_bpdph))
+
+# Normalize each condition's vertex weight based on the global max
+vertex_weights_normal <- num_interactions_normal / global_max * 500
+vertex_weights_bpd <- num_interactions_bpd / global_max * 500
+vertex_weights_bpdph <- num_interactions_bpdph / global_max * 500
+
+
+
+
+# Extract edge weights 
+edge_weights_normal <- cellchat.normal@net$weight
+edge_weights_bpd <- cellchat.bpd@net$weight
+edge_weights_bpdph <- cellchat.bpdph@net$weight
+
+# Find the global maximum edge weight across conditions
+global_max_edge <- max(c(edge_weights_normal,
+                         edge_weights_bpd,
+                         edge_weights_bpdph))
+
+# Normalize edge weights within each CellChat object
+cellchat.normal@net$weight <- edge_weights_normal / global_max_edge * 10
+cellchat.bpd@net$weight <- edge_weights_bpd / global_max_edge * 10
+cellchat.bpdph@net$weight <- edge_weights_bpdph / global_max_edge * 10
+```
+
+```{r}
 options(repr.plot.width = 10,
         repr.plot.height = 6)
 
@@ -404,7 +439,10 @@ func <- function(pathway) {
       height = 10)
   b <- netVisual_aggregate(cellchat.normal,
                            signaling = pathways.show,
-                           layout = "circle")
+                           layout = "circle",
+                           edge.width.max = 30,
+                           vertex.weight = vertex_weights_normal,
+                           color.use = scPalette(11)[-4])
   title(pathway)
   dev.off()
   # Chord diagram
@@ -476,7 +514,10 @@ func <- function(pathway) {
       height = 10)
   b <- netVisual_aggregate(cellchat.bpd,
                            signaling = pathways.show,
-                           layout = "circle")
+                           layout = "circle",
+                           edge.width.max = 30,
+                           vertex.weight = vertex_weights_bpd,
+                           color.use = scPalette(11)[-4])
   title(pathway)
   dev.off()
   # Chord diagram
@@ -547,7 +588,9 @@ func <- function(pathway) {
       height = 10)
   b <- netVisual_aggregate(cellchat.bpdph,
                            signaling = pathways.show,
-                           layout = "circle")
+                           layout = "circle",
+                           edge.width.max = 30,
+                           vertex_weights_bpdph)
   title(pathway)
   dev.off()
   # Chord diagram

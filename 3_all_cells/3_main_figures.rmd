@@ -137,7 +137,7 @@ gridExtra::grid.arrange(egg::set_panel_size(p = all_umap,
                                             width = unit(20, "cm"),
                                             height = unit(20, "cm")))
 
-ggsave("./data/checkpoint/figs/1B_allumap.pdf",
+ggsave("./data/checkpoint/figs/1C_allumap.pdf",
        egg::set_panel_size(p = all_umap,
                            width = unit(20, "cm"),
                            height = unit(20, "cm")),
@@ -183,7 +183,7 @@ gridExtra::grid.arrange(egg::set_panel_size(p = condition_umap,
                                             width = unit(20, "cm"),
                                             height = unit(20, "cm")))
 
-ggsave("./data/checkpoint/figs/1C_conditionumap_normal.pdf",
+ggsave("./data/checkpoint/figs/1D_conditionumap_normal.pdf",
        egg::set_panel_size(p = condition_umap,
                            width = unit(20, "cm"),
                            height = unit(20, "cm")),
@@ -228,7 +228,7 @@ gridExtra::grid.arrange(egg::set_panel_size(p = condition_umap,
                                             width = unit(20, "cm"),
                                             height = unit(20, "cm")))
 
-ggsave("./data/checkpoint/figs/1D_conditionumap_bpd.pdf",
+ggsave("./data/checkpoint/figs/1E_conditionumap_bpd.pdf",
        egg::set_panel_size(p = condition_umap,
                            width = unit(20, "cm"),
                            height = unit(20, "cm")),
@@ -273,7 +273,7 @@ gridExtra::grid.arrange(egg::set_panel_size(p = condition_umap,
                                             width = unit(20, "cm"),
                                             height = unit(20, "cm")))
 
-ggsave("./data/checkpoint/figs/1E_conditionumap_bpdph.pdf",
+ggsave("./data/checkpoint/figs/1F_conditionumap_bpdph.pdf",
        egg::set_panel_size(p = condition_umap,
                            width = unit(20, "cm"),
                            height = unit(20, "cm")),
@@ -318,7 +318,7 @@ gridExtra::grid.arrange(egg::set_panel_size(p = condition_umap,
                                             width = unit(20, "cm"),
                                             height = unit(20, "cm")))
 
-ggsave("./data/checkpoint/figs/1F_conditionumap_preterm.pdf",
+ggsave("./data/checkpoint/figs/1G_conditionumap_preterm.pdf",
        egg::set_panel_size(p = condition_umap,
                            width = unit(20, "cm"),
                            height = unit(20, "cm")),
@@ -345,7 +345,7 @@ for (idx in seq_along(wb_markers_names)) {
             rowNames = TRUE)
 }
 saveWorkbook(wb_markers,
-             file = "./data/checkpoint/figs/all_markers_per_celltype.xlsx",
+             file = "./data/checkpoint/figs/S_all_markers_per_celltype.xlsx",
              overwrite = TRUE)
 ```
 
@@ -467,7 +467,7 @@ gridExtra::grid.arrange(egg::set_panel_size(p = all_marker_plot_w_theme,
                                             width = unit(40, "cm"),
                                             height = unit(20, "cm")))
 
-ggsave("./data/checkpoint/figs/1G_alldotplot.pdf",
+ggsave("./data/checkpoint/figs/2A_alldotplot.pdf",
        egg::set_panel_size(p = all_marker_plot_w_theme,
                            width = unit(40, "cm"),
                            height = unit(20, "cm")),
@@ -477,6 +477,790 @@ ggsave("./data/checkpoint/figs/1G_alldotplot.pdf",
        height = unit(20, "cm"))
 
 ```
+
+```{r}
+
+```
+
+```{r}
+Idents(merged_seurat) <- merged_seurat$condition
+no_preterm_or_immune <- subset(merged_seurat,
+                               idents = "Acute preterm injury",
+                               invert = TRUE)
+Idents(no_preterm_or_immune) <- no_preterm_or_immune$celltype_lineage
+no_preterm_or_immune <- subset(no_preterm_or_immune,
+                               idents = "Immune",
+                               invert = TRUE)
+Idents(no_preterm_or_immune) <- no_preterm_or_immune$celltype
+no_preterm_or_immune <- subset(no_preterm_or_immune,
+                               idents = c("Basal",
+                                          "Secretory MUC5B",
+                                          "abCap"),
+                               invert = TRUE)
+celltype_for_volc <- factor(levels(Idents(no_preterm_or_immune)))
+celltype_for_volc_w_lineage <- c(celltype_for_volc, factor(levels(no_preterm_or_immune$celltype_lineage)))
+
+markers_compare1 <- future.apply::future_lapply(celltype_for_volc_w_lineage,
+       function(x) {
+              if(x %in% c("Epithelial", "Endothelial", "Mesenchymal", "Immune")) {
+                     Idents(merged_seurat) <- merged_seurat$celltype_lineage
+              } else {
+                     Idents(merged_seurat) <- merged_seurat$celltype
+              }
+              merged_seurat_sub <- subset(merged_seurat,
+                                          idents = x)
+              Idents(merged_seurat_sub) <- merged_seurat_sub$condition
+              foundmarkers <- FindMarkers(merged_seurat_sub,
+                                          ident.1 = "BPD",
+                                          ident.2 = "Term infant",
+                                          test.use = "MAST",
+                                          logfc.threshold = 0)
+              up_cat <- "up_in_bpd/down_in_term_infant"
+              down_cat <- "up_in_term_infant/down_in_bpd"
+              foundmarkers[up_cat] <- ifelse(foundmarkers$avg_log2FC > 1 &
+                                             foundmarkers$p_val_adj < 1e-05 &
+                                             !grepl("^RP|^MT-", rownames(foundmarkers)), TRUE, FALSE)
+              foundmarkers[down_cat] <- ifelse(foundmarkers$avg_log2FC < -1 &
+                                               foundmarkers$p_val_adj < 1e-05 &
+                                               !grepl("^RP|^MT-", rownames(foundmarkers)), TRUE, FALSE)
+              return(foundmarkers)
+}
+)
+names(markers_compare1) <- celltype_for_volc_w_lineage
+wb_markers_names <- celltype_for_volc_w_lineage
+wb_markers <- createWorkbook()
+
+for (idx in seq_along(wb_markers_names)) {
+       print(idx)
+       addWorksheet(wb_markers,
+                    as.character(wb_markers_names[idx]))
+       print(idx)
+       writeData(wb_markers,
+                 as.character(wb_markers_names[idx]),
+                 markers_compare1[[idx]],
+                 colNames = TRUE,
+                 rowNames = TRUE)
+}
+saveWorkbook(wb_markers,
+             file = paste0("./data/figures/deg/S_excel_deg_bpd_term_infant.xlsx"),
+             overwrite = TRUE)
+
+
+markers_compare2 <- future.apply::future_lapply(celltype_for_volc_w_lineage,
+       function(x) {
+              if(x %in% c("Epithelial", "Endothelial", "Mesenchymal", "Immune")) {
+                     Idents(merged_seurat) <- merged_seurat$celltype_lineage
+              } else {
+                     Idents(merged_seurat) <- merged_seurat$celltype
+              }
+              merged_seurat_sub <- subset(merged_seurat,
+                                          idents = x)
+              Idents(merged_seurat_sub) <- merged_seurat_sub$condition
+              foundmarkers <- FindMarkers(merged_seurat_sub,
+                                          ident.1 = "BPD+PH",
+                                          ident.2 = "Term infant",
+                                          test.use = "MAST",
+                                          logfc.threshold = 0)
+              up_cat <- "up_in_bpdph/down_in_term_infant"
+              down_cat <- "up_in_term_infant/down_in_bpdph"
+              foundmarkers[up_cat] <- ifelse(foundmarkers$avg_log2FC > 1 &
+                                             foundmarkers$p_val_adj < 1e-05 &
+                                             !grepl("^RP|^MT-", rownames(foundmarkers)), TRUE, FALSE)
+              foundmarkers[down_cat] <- ifelse(foundmarkers$avg_log2FC < -1 &
+                                               foundmarkers$p_val_adj < 1e-05 &
+                                               !grepl("^RP|^MT-", rownames(foundmarkers)), TRUE, FALSE)
+              return(foundmarkers)
+}
+)
+names(markers_compare2) <- celltype_for_volc_w_lineage
+wb_markers_names <- celltype_for_volc_w_lineage
+wb_markers <- createWorkbook()
+
+for (idx in seq_along(wb_markers_names)) {
+       addWorksheet(wb_markers,
+                    as.character(wb_markers_names[idx]))
+       writeData(wb_markers,
+                 wb_markers_names[idx],
+                 markers_compare2[[idx]],
+                 colNames = TRUE,
+                 rowNames = TRUE)
+}
+wb_markers
+saveWorkbook(wb_markers,
+             file = paste0("./data/figures/deg/S_excel_deg_bpdph_term_infant.xlsx"),
+             overwrite = TRUE)
+
+
+markers_compare3 <- future.apply::future_lapply(celltype_for_volc_w_lineage,
+       function(x) {
+              if(x %in% c("Epithelial", "Endothelial", "Mesenchymal", "Immune")) {
+                     Idents(merged_seurat) <- merged_seurat$celltype_lineage
+              } else {
+                     Idents(merged_seurat) <- merged_seurat$celltype
+              }
+              merged_seurat_sub <- subset(merged_seurat,
+                                          idents = x)
+              Idents(merged_seurat_sub) <- merged_seurat_sub$condition
+              foundmarkers <- FindMarkers(merged_seurat_sub,
+                                          ident.1 = "BPD+PH",
+                                          ident.2 = "BPD",
+                                          test.use = "MAST",
+                                          logfc.threshold = 0)
+              up_cat <- "up_in_bpdph/down_in_bpd"
+              down_cat <- "up_in_bpd/down_in_bpdph"
+              foundmarkers[up_cat] <- ifelse(foundmarkers$avg_log2FC > 1 &
+                                             foundmarkers$p_val_adj < 1e-05 &
+                                             !grepl("^RP|^MT-", rownames(foundmarkers)), TRUE, FALSE)
+              foundmarkers[down_cat] <- ifelse(foundmarkers$avg_log2FC < -1 &
+                                               foundmarkers$p_val_adj < 1e-05 &
+                                               !grepl("^RP|^MT-", rownames(foundmarkers)), TRUE, FALSE)
+              return(foundmarkers)
+}
+)
+names(markers_compare3) <- celltype_for_volc_w_lineage
+wb_markers_names <- celltype_for_volc_w_lineage
+wb_markers <- createWorkbook()
+
+for (idx in seq_along(wb_markers_names)) {
+       addWorksheet(wb_markers,
+                    as.character(wb_markers_names[idx]))
+       writeData(wb_markers,
+                 as.character(wb_markers_names[idx]),
+                 markers_compare3[[idx]],
+                 colNames = TRUE,
+                 rowNames = TRUE)
+}
+saveWorkbook(wb_markers,
+             file = paste0("./data/figures/deg/S_excel_deg_bpdph_bpd.xlsx"),
+             overwrite = TRUE)
+```
+
+
+```{r}
+Idents(merged_seurat) <- merged_seurat$celltype_lineage
+celltype_for_volc <- factor(levels(Idents(merged_seurat)))
+
+skip_set_size_plot <- function(ups) {
+  main <- ups$Main_bar
+  matrix <- ups$Matrix
+  ## find panel grob
+  panel_idx <- grep("panel", main$layout$name, fixed = TRUE)
+  ## find text grob
+  text_idx <- which(
+    vapply(main$grobs[[panel_idx]]$children, 
+           \(x) inherits(x, "text"), 
+           logical(1)))
+  tG <- main$grobs[[panel_idx]]$children[[text_idx]]
+  main$grobs[[panel_idx]]$children[[text_idx]] <- tG
+
+  y_axis_idx <- grep("axis-l", matrix$layout$name)
+  if (length(y_axis_idx) > 0) {
+       matrix$grobs[y_axis_idx] <- NULL
+       matrix$layout <- matrix$layout[-y_axis_idx, ]
+  }
+
+  # Find the panel grobs for both the main plot and the matrix plot
+  main_panel_idx <- grep("panel", main$layout$name, fixed = TRUE)
+  matrix_panel_idx <- grep("panel", matrix$layout$name, fixed = TRUE)
+
+  # Align the widths of the panels
+  main_panel <- main$grobs[[main_panel_idx]]
+  matrix_panel <- matrix$grobs[[matrix_panel_idx]]
+  max_width <- grid::unit.pmax(main_panel$widths, matrix_panel$widths)
+#   max_width <- sum(main_panel$widths)
+  print(matrix_panel)
+  main$grobs[[main_panel_idx]]$widths <- max_width
+  matrix$grobs[[matrix_panel_idx]]$widths <- max_width
+
+  grid.newpage()
+  grid.draw(arrangeGrob(main, matrix, heights = ups$mb.ratio))
+}
+
+for(x in as.character(celltype_for_volc)) {
+       bpd_term <- markers_compare1[[x]]
+       bpdph_term <- markers_compare2[[x]]
+       bpdph_bpd <- markers_compare3[[x]]
+
+       bpd_term_up <- rownames(bpd_term[bpd_term[["up_in_bpd/down_in_term_infant"]] == TRUE, ])
+       bpd_term_down <- rownames(bpd_term[bpd_term[["up_in_term_infant/down_in_bpd"]] == TRUE, ]) 
+       bpdph_term_up <- rownames(bpdph_term[bpdph_term[["up_in_bpdph/down_in_term_infant"]] == TRUE, ])
+       bpdph_term_down <- rownames(bpdph_term[bpdph_term[["up_in_term_infant/down_in_bpdph"]] == TRUE, ])
+       bpdph_bpd_up <- rownames(bpdph_bpd[bpdph_bpd[["up_in_bpdph/down_in_bpd"]] == TRUE, ])
+       bpdph_bpd_down <- rownames(bpdph_bpd[bpdph_bpd[["up_in_bpd/down_in_bpdph"]] == TRUE, ])
+       
+       upset_list <- list(
+              bpd_term_up,
+              bpd_term_down,
+              bpdph_term_up,
+              bpdph_term_down,
+              bpdph_bpd_up = bpdph_bpd_up,
+              bpdph_bpd_down = bpdph_bpd_down
+       )
+       names(upset_list) <- c("Up in BPD/Down in Term infant",
+                                   "Up in Term infant/Down in BPD",
+                                   "Up in BPD+PH/Down in Term infant",
+                                   "Up in Term infant/Down in BPD+PH",
+                                   "Up in BPD+PH/Down in BPD",
+                                   "Up in BPD/Down in BPD+PH")
+       # names(upset_list) <- c("a", "b", "c", "d", "e", "f")
+       pdf(file = paste0("./data/figures/deg/focus_genes/2B_upset_lineage_", x, ".pdf"),
+              width = unit(10, "cm"),
+              height = unit(15, "cm"),
+              onefile = FALSE)
+
+       upset_plot <- upset(fromList(upset_list),
+                            sets = rev(names(upset_list)),
+                            keep.order = TRUE,
+                            mainbar.y.max = 152,
+                            text.scale = c(6, 6, 6, 6, 6, 4.5),
+                            mb.ratio = c(0.7, 0.3),
+                            point.size = 8.8,
+                            line.size = 2.8)
+
+       skip_set_size_plot(upset_plot)
+
+       dev.off()
+}
+```
+
+
+```{r}
+rm_genes <- c("FP236383.3", "FP671120.4")
+markers_compare1 <- lapply(markers_compare1,
+                           function(df) df[!rownames(df) %in% rm_genes, ])
+markers_compare2 <- lapply(markers_compare2,
+                           function(df) df[!rownames(df) %in% rm_genes, ])
+markers_compare3 <- lapply(markers_compare3,
+                           function(df) df[!rownames(df) %in% rm_genes, ])
+```
+
+
+```{r}
+merged_seurat_stripplot <- merged_seurat
+Idents(merged_seurat_stripplot) <- merged_seurat_stripplot$celltype_lineage
+merged_seurat_stripplot <- subset(merged_seurat_stripplot,
+                                  idents = c("Immune"),
+                                  invert = TRUE)
+Idents(merged_seurat_stripplot) <- merged_seurat$celltype
+merged_seurat_stripplot <- subset(merged_seurat_stripplot,
+                                  idents = c("Basal",
+                                             "Secretory MUC5B",
+                                             "abCap"),
+                                  invert = TRUE)
+Idents(merged_seurat_stripplot) <- merged_seurat_stripplot$broad_condition
+factor(levels(merged_seurat_stripplot$condition))
+Idents(merged_seurat_stripplot) <- merged_seurat_stripplot$condition
+cell_types <- unique(merged_seurat_stripplot@meta.data$celltype)
+cell_types
+
+#Term infant BPD
+
+de_results_list <- list()
+for (cell_type in cell_types) {
+       Idents(merged_seurat_stripplot) <- merged_seurat_stripplot$celltype
+       seurat_subset <- subset(merged_seurat_stripplot,
+                               idents = cell_type)
+       Idents(seurat_subset) <- seurat_subset$condition
+       markers <- FindMarkers(seurat_subset,
+                              ident.1 = "BPD",
+                              ident.2 = "Term infant",
+                              test.use = "MAST")
+       markers$celltype <- cell_type
+       markers$gene <- rownames(markers)
+       de_results_list[[cell_type]] <- markers
+}
+
+rm_genes <- c("FP236383.3", "FP671120.4")
+de_results_list <- lapply(de_results_list, function(df) df[!rownames(df) %in% rm_genes, ])
+
+de_results_combined <- do.call(rbind,
+                               de_results_list)
+de_results_combined$significance <- ifelse(de_results_combined$p_val_adj < 1e-05, TRUE, FALSE)
+de_results_combined$color <- ifelse(de_results_combined$significance &
+                                    de_results_combined$avg_log2FC > 1, "green3", ifelse(de_results_combined$significance &
+                                                                                          de_results_combined$avg_log2FC < -1, "#E7A19E", "grey"))
+de_results_combined$color <- factor(de_results_combined$color,
+                                    levels = c("green3", "#E7A19E", "grey"))
+de_results_combined$size <- ifelse(de_results_combined$significance &
+                                   abs(de_results_combined$avg_log2FC) > 1, 3, 2.5)
+head(de_results_combined)
+celltype_ord <- c("AT1",
+                  "AT2",
+                  "RASC",
+                  "Secretory -3A1, -3A2",
+                  "Multiciliated",
+                  "aCap",
+                  "gCap",
+                  "Arterial EC",
+                  "Pulmonary venous EC",
+                  "Systemic venous EC",
+                  "Lymphatic",
+                  "Alveolar FB",
+                  "Adventitial FB",
+                  "Activated FB",
+                  "Alveolar MyoFB",
+                  "Ductal MyoFB",
+                  "Pericyte",
+                  "VSMC")
+
+strip_plot <- ggplot() +
+  # First layer: Gray points
+  geom_jitter(data = subset(de_results_combined,
+                            color == "grey"),
+              aes(x = factor(celltype,
+                             level = celltype_ord),
+                  y = avg_log2FC),
+              width = 0.3,
+              size = de_results_combined$size[de_results_combined$color == "grey"], 
+              color = "grey") +
+  
+  # Second layer: Up points
+  geom_jitter(data = subset(de_results_combined,
+                            color == "green3"),
+              aes(x = factor(celltype,
+                             level = celltype_ord),
+                  y = avg_log2FC),
+              width = 0.3,
+              size = de_results_combined$size[de_results_combined$color == "green3"], 
+              color = "green3") +
+
+  # Third layer: Down points
+  geom_jitter(data = subset(de_results_combined,
+                            color == "#E7A19E"),
+              aes(x = factor(celltype,
+                             level = celltype_ord),
+                  y = avg_log2FC),
+              width = 0.3,
+              size = de_results_combined$size[de_results_combined$color == "#E7A19E"], 
+              color = "#E7A19E") +
+  ylim(-6,6) +
+  # Add scales, labels, and theme
+  labs(title = "DEG Across Celltype Up (purpgreenle) or Down (pink) in BPD vs Term infant",
+       x = "Celltype",
+       y = "Log2 Fold Change",
+       color = "Significance") +
+  theme_minimal() +
+  theme(text = element_text(size = 60),
+        plot.title = element_text(size = 40),
+        axis.title.y = element_text(size = 40),
+        axis.title.x = element_blank(),
+        axis.text.x = element_text(angle = 45, hjust = 1))
+
+gridExtra::grid.arrange(egg::set_panel_size(p = strip_plot,
+                                            width = unit(20, "cm"),
+                                            height = unit(10, "cm")))
+
+ggsave("./data/figures/deg/focus_genes/2C_stripplot_bpd_vs_term.pdf",
+       egg::set_panel_size(p = strip_plot,
+                           width = unit(45, "cm"),
+                           height = unit(30, "cm")),
+       dpi = 1200,
+       bg = "transparent",
+       width = unit(20, "cm"),
+       height = unit(30, "cm"))
+
+#BPD+PH Term infant
+
+de_results_list <- list()
+for (cell_type in cell_types) {
+       Idents(merged_seurat_stripplot) <- merged_seurat_stripplot$celltype
+       seurat_subset <- subset(merged_seurat_stripplot,
+                               idents = cell_type)
+       Idents(seurat_subset) <- seurat_subset$condition
+       markers <- FindMarkers(seurat_subset,
+                              ident.1 = "BPD+PH",
+                              ident.2 = "Term infant",
+                              test.use = "MAST")
+       markers$celltype <- cell_type
+       markers$gene <- rownames(markers)
+       de_results_list[[cell_type]] <- markers
+}
+
+rm_genes <- c("FP236383.3", "FP671120.4")
+de_results_list <- lapply(de_results_list, function(df) df[!rownames(df) %in% rm_genes, ])
+
+de_results_combined <- do.call(rbind,
+                               de_results_list)
+de_results_combined$significance <- ifelse(de_results_combined$p_val_adj < 1e-05, TRUE, FALSE)
+de_results_combined$color <- ifelse(de_results_combined$significance &
+                                    de_results_combined$avg_log2FC > 1, "#6A3D9A", ifelse(de_results_combined$significance &
+                                                                                          de_results_combined$avg_log2FC < -1, "#E7A19E", "grey"))
+de_results_combined$color <- factor(de_results_combined$color,
+                                    levels = c("#6A3D9A", "#E7A19E", "grey"))
+de_results_combined$size <- ifelse(de_results_combined$significance &
+                                   abs(de_results_combined$avg_log2FC) > 1, 3, 2.5)
+head(de_results_combined)
+celltype_ord <- c("AT1",
+                  "AT2",
+                  "RASC",
+                  "Secretory -3A1, -3A2",
+                  "Multiciliated",
+                  "aCap",
+                  "gCap",
+                  "Arterial EC",
+                  "Pulmonary venous EC",
+                  "Systemic venous EC",
+                  "Lymphatic",
+                  "Alveolar FB",
+                  "Adventitial FB",
+                  "Activated FB",
+                  "Alveolar MyoFB",
+                  "Ductal MyoFB",
+                  "Pericyte",
+                  "VSMC")
+
+strip_plot <- ggplot() +
+  # First layer: Gray points
+  geom_jitter(data = subset(de_results_combined,
+                            color == "grey"),
+              aes(x = factor(celltype,
+                             level = celltype_ord),
+                  y = avg_log2FC),
+              width = 0.3,
+              size = de_results_combined$size[de_results_combined$color == "grey"], 
+              color = "grey") +
+  
+  # Second layer: Up points
+  geom_jitter(data = subset(de_results_combined,
+                            color == "#6A3D9A"),
+              aes(x = factor(celltype,
+                             level = celltype_ord),
+                  y = avg_log2FC),
+              width = 0.3,
+              size = de_results_combined$size[de_results_combined$color == "#6A3D9A"], 
+              color = "#6A3D9A") +
+
+  # Third layer: Down points
+  geom_jitter(data = subset(de_results_combined,
+                            color == "#E7A19E"),
+              aes(x = factor(celltype,
+                             level = celltype_ord),
+                  y = avg_log2FC),
+              width = 0.3,
+              size = de_results_combined$size[de_results_combined$color == "#E7A19E"], 
+              color = "#E7A19E") +
+  ylim(-6,6) +
+  # Add scales, labels, and theme
+  labs(title = "DEG Across Celltype Up (purple) or Down (pink) in BPD+PH vs Term infant",
+       x = "Celltype",
+       y = "Log2 Fold Change",
+       color = "Significance") +
+  theme_minimal() +
+  theme(text = element_text(size = 60),
+        plot.title = element_text(size = 40),
+        axis.title.y = element_text(size = 40),
+        axis.title.x = element_blank(),
+        axis.text.x = element_text(angle = 45, hjust = 1))
+
+gridExtra::grid.arrange(egg::set_panel_size(p = strip_plot,
+                                            width = unit(20, "cm"),
+                                            height = unit(10, "cm")))
+
+ggsave("./data/figures/deg/focus_genes/2C_stripplot_bpdph_vs_term.pdf",
+       egg::set_panel_size(p = strip_plot,
+                           width = unit(45, "cm"),
+                           height = unit(30, "cm")),
+       dpi = 1200,
+       bg = "transparent",
+       width = unit(20, "cm"),
+       height = unit(30, "cm"))
+
+#BPD BPD+PH
+
+de_results_list <- list()
+for (cell_type in cell_types) {
+       Idents(merged_seurat_stripplot) <- merged_seurat_stripplot$celltype
+       seurat_subset <- subset(merged_seurat_stripplot,
+                               idents = cell_type)
+       Idents(seurat_subset) <- seurat_subset$condition
+       markers <- FindMarkers(seurat_subset,
+                              ident.1 = "BPD+PH",
+                              ident.2 = "BPD",
+                              test.use = "MAST")
+       markers$celltype <- cell_type
+       markers$gene <- rownames(markers)
+       de_results_list[[cell_type]] <- markers
+}
+
+rm_genes <- c("FP236383.3", "FP671120.4")
+de_results_list <- lapply(de_results_list, function(df) df[!rownames(df) %in% rm_genes, ])
+
+de_results_combined <- do.call(rbind,
+                               de_results_list)
+de_results_combined$significance <- ifelse(de_results_combined$p_val_adj < 1e-05, TRUE, FALSE)
+de_results_combined$color <- ifelse(de_results_combined$significance &
+                                    de_results_combined$avg_log2FC > 1, "#6A3D9A", ifelse(de_results_combined$significance &
+                                                                                          de_results_combined$avg_log2FC < -1, "green3", "grey"))
+de_results_combined$color <- factor(de_results_combined$color,
+                                    levels = c("#6A3D9A", "green3", "grey"))
+de_results_combined$size <- ifelse(de_results_combined$significance &
+                                   abs(de_results_combined$avg_log2FC) > 1, 3, 2.5)
+head(de_results_combined)
+celltype_ord <- c("AT1",
+                  "AT2",
+                  "RASC",
+                  "Secretory -3A1, -3A2",
+                  "Multiciliated",
+                  "aCap",
+                  "gCap",
+                  "Arterial EC",
+                  "Pulmonary venous EC",
+                  "Systemic venous EC",
+                  "Lymphatic",
+                  "Alveolar FB",
+                  "Adventitial FB",
+                  "Activated FB",
+                  "Alveolar MyoFB",
+                  "Ductal MyoFB",
+                  "Pericyte",
+                  "VSMC")
+
+strip_plot <- ggplot() +
+  # First layer: Gray points
+  geom_jitter(data = subset(de_results_combined,
+                            color == "grey"),
+              aes(x = factor(celltype,
+                             level = celltype_ord),
+                  y = avg_log2FC),
+              width = 0.3,
+              size = de_results_combined$size[de_results_combined$color == "grey"], 
+              color = "grey") +
+  
+  # Second layer: Up points
+  geom_jitter(data = subset(de_results_combined,
+                            color == "#6A3D9A"),
+              aes(x = factor(celltype,
+                             level = celltype_ord),
+                  y = avg_log2FC),
+              width = 0.3,
+              size = de_results_combined$size[de_results_combined$color == "#6A3D9A"], 
+              color = "#6A3D9A") +
+
+  # Third layer: Down points
+  geom_jitter(data = subset(de_results_combined,
+                            color == "green3"),
+              aes(x = factor(celltype,
+                             level = celltype_ord),
+                  y = avg_log2FC),
+              width = 0.3,
+              size = de_results_combined$size[de_results_combined$color == "green3"], 
+              color = "green3") +
+  ylim(-6,6) +
+  # Add scales, labels, and theme
+  labs(title = "DEG Across Celltype Up (purple) or Down (green) in BPD+PH vs BPD",
+       x = "Celltype",
+       y = "Log2 Fold Change",
+       color = "Significance") +
+  theme_minimal() +
+  theme(text = element_text(size = 60),
+        plot.title = element_text(size = 40),
+        axis.title.y = element_text(size = 40),
+        axis.title.x = element_blank(),
+        axis.text.x = element_text(angle = 45, hjust = 1))
+
+gridExtra::grid.arrange(egg::set_panel_size(p = strip_plot,
+                                            width = unit(20, "cm"),
+                                            height = unit(10, "cm")))
+
+ggsave("./data/figures/deg/focus_genes/2C_stripplot_bpdph_vs_bpd.pdf",
+       egg::set_panel_size(p = strip_plot,
+                           width = unit(45, "cm"),
+                           height = unit(30, "cm")),
+       dpi = 1200,
+       bg = "transparent",
+       width = unit(20, "cm"),
+       height = unit(30, "cm"))
+```
+
+```{r}
+celltype_for_volc <- c("AT1_BPD_Term infant",
+                       "AT2_BPD_Term infant",
+                       "gCap_BPD_Term infant",
+                       "Alveolar FB_BPD_Term infant",
+                       "Alveolar MyoFB_BPD_Term infant",
+                       "Ductal MyoFB_BPD_Term infant",
+                       "AT1_BPD+PH_Term infant",
+                       "AT2_BPD+PH_Term infant",
+                       "Multiciliated_BPD+PH_Term infant",
+                       "gCap_BPD+PH_Term infant",
+                       "aCap_BPD+PH_Term infant",
+                       "Alveolar FB_BPD+PH_Term infant",
+                       "AT1_BPD+PH_BPD")
+gene_list <- list("AT1_BPD_Term infant" = c("ATF3",
+                                            "AQP5",
+                                            "AQP5",
+                                            "SPARC",
+                                            "CXCL2"),
+                  "AT2_BPD_Term infant" = c("SFTPC",
+                                            "SFTPD",
+                                            "HHIP",
+                                            "WIF1",
+                                            "LRRK2",
+                                            "ABCA3",
+                                            "CXCL2"),
+                  "gCap_BPD_Term infant" = c("SPARCL1",
+                                             "CNN3",
+                                             "CLDN5"),
+                  "Alveolar FB_BPD_Term infant" = c("COL1A1",
+                                                    "FBLN1",
+                                                    "COL3A1",
+                                                    "COL1A2",
+                                                    "LAMA2",
+                                                    "CCN1",
+                                                    "CCN2"),
+                  "Alveolar MyoFB_BPD_Term infant" = c("FGF14"),
+                  "Ductal MyoFB_BPD_Term infant" = c("LGR6"),
+                  "AT1_BPD+PH_Term infant" = c("VIM",
+                                               "KRT8",
+                                               "AGER",
+                                               "ATF3",
+                                               "KRT18",
+                                               "CLDN4",
+                                               "SEMA3B",
+                                               "AQP4",
+                                               "CXCL2",
+                                               "VEGFA",
+                                               "SPOCK2",
+                                               "AQP5",
+                                               "LAMA3"),
+                  "AT2_BPD+PH_Term infant" = c("SFTPC",
+                                               "SFTPB",
+                                               "SFTPD",
+                                               "NFKBIA",
+                                               "SOD2",
+                                               "WIF1",
+                                               "HHIP",
+                                               "ABCA3"),
+                  "Multiciliated_BPD+PH_Term infant" = c("DNAH11",
+                                                         "DNAH9",
+                                                         "DNAH5",
+                                                         "DNAH6",
+                                                         "DNAH7"),
+                  "gCap_BPD+PH_Term infant" = c("CXCL12",
+                                                "CLDN5",
+                                                "YES1",
+                                                "SPARCL1",
+                                                "S100A4"),
+                  "aCap_BPD+PH_Term infant" = c("CLDN5",
+                                                "NFKBIA",
+                                                "CNN3",
+                                                "SPARCL1",
+                                                "S100A4"),
+                  "Alveolar FB_BPD+PH_Term infant" = c("COL1A2",
+                                                       "COL1A1",
+                                                       "COL3A1",
+                                                       "COL6A3",
+                                                       "MMP2",
+                                                       "LAMA2",
+                                                       "CCN1",
+                                                       "CCN2",
+                                                       "NFKBIA"),
+                  "AT1_BPD+PH_BPD" = c("ATF3",
+                                       "LAMA3",
+                                       "SEMA4A",
+                                       "CLDN4",
+                                       "CCN1",
+                                       "KRT8",
+                                       "KRT18",
+                                       "LAMC2"))
+
+future.apply::future_lapply(celltype_for_volc,
+       function(x) {
+              celltype_x <- strsplit(x, "_")[[1]][[1]]
+              id1 <- strsplit(x, "_")[[1]][[2]]
+              id2 <- strsplit(x, "_")[[1]][[3]]
+              Idents(merged_seurat) <- merged_seurat$celltype
+              merged_seurat_sub <- subset(merged_seurat,
+                                          idents = celltype_x)
+              Idents(merged_seurat_sub) <- merged_seurat_sub$condition
+              foundmarkers <- FindMarkers(merged_seurat_sub,
+                                          ident.1 = id1,
+                                          ident.2 = id2,
+                                          test.use = "MAST",
+                                          logfc.threshold = 0.25)
+
+              rm_genes <- c("FP236383.3",
+                            "FP671120.4")
+              foundmarkers <- foundmarkers[!rownames(foundmarkers) %in% rm_genes, ]
+              filtered_genes <- gene_list[[x]]
+              lab_italics <- paste0("italic('", rownames(foundmarkers), "')")
+              selectLab_italics = paste0("italic('", filtered_genes, "')")
+
+              if (id2 == "BPD") {
+                     keyvals <- ifelse(foundmarkers$avg_log2FC < -1 &
+                                       foundmarkers$p_val_adj < 1e-05, "#00BD00", ifelse(foundmarkers$avg_log2FC > 1 &
+                                                                                         foundmarkers$p_val_adj < 1e-05, "#3B007A", '#AAAAAA'))
+                     keyvals[is.na(keyvals)] <- '#AAAAAA'
+                     names(keyvals)[keyvals == "#3B007A"] <- paste0("Up in ", id1, "/Down in ", id2)
+                     names(keyvals)[keyvals == '#AAAAAA'] <- 'Not significantly changed'
+                     names(keyvals)[keyvals == "#00BD00"] <- paste0("Up in ", id2, "/Down in ", id1)
+              } else if (id1 == "BPD+PH") {
+                     keyvals <- ifelse(foundmarkers$avg_log2FC < -1 &
+                                       foundmarkers$p_val_adj < 1e-05, "#DF837F", ifelse(foundmarkers$avg_log2FC > 1 &
+                                                                                         foundmarkers$p_val_adj < 1e-05, "#3B007A", '#AAAAAA'))
+                     keyvals[is.na(keyvals)] <- '#AAAAAA'
+                     names(keyvals)[keyvals == "#3B007A"] <- paste0("Up in ", id1, "/Down in ", id2)
+                     names(keyvals)[keyvals == '#AAAAAA'] <- 'Not significantly changed'
+                     names(keyvals)[keyvals == "#DF837F"] <- paste0("Up in ", id2, "/Down in ", id1)
+              } else {
+                     keyvals <- ifelse(foundmarkers$avg_log2FC < -1 &
+                                       foundmarkers$p_val_adj < 1e-05, "#DF837F", ifelse(foundmarkers$avg_log2FC > 1 &
+                                                                                         foundmarkers$p_val_adj < 1e-05, "#00BD00", '#AAAAAA'))
+                     keyvals[is.na(keyvals)] <- '#AAAAAA'
+                     names(keyvals)[keyvals == "#00BD00"] <- paste0("Up in ", id1, "/Down in ", id2)
+                     names(keyvals)[keyvals == '#AAAAAA'] <- 'Not significantly changed'
+                     names(keyvals)[keyvals == "#DF837F"] <- paste0("Up in ", id2, "/Down in ", id1)
+              }
+
+              volc <- EnhancedVolcano(foundmarkers,
+                            lab = lab_italics,
+                            x = 'avg_log2FC',
+                            y = 'p_val_adj',
+                            title = NULL,
+                            subtitle = celltype_x,
+                            caption = paste0("total # of genes = ", nrow(foundmarkers)),
+                            selectLab = selectLab_italics,
+                            axisLabSize = 125,
+                            subtitleLabSize = 100,
+                            captionLabSize = 100,
+                            cutoffLineType = "blank",
+                            gridlines.minor = FALSE,
+                            drawConnectors = TRUE,
+                            lengthConnectors = unit(0.1, "npc"),
+                            arrowheads = FALSE,
+                            min.segment.length = 0,
+                            max.overlaps = 50,
+                            parseLabels = TRUE,
+                            colCustom = keyvals,
+                            boxedLabels = TRUE,
+                            xlim = c(-max(abs(foundmarkers$avg_log2FC)), max(abs(foundmarkers$avg_log2FC))),
+                            labSize = 50,
+                            colAlpha = 0.76,
+                            pointSize = c(ifelse(abs(foundmarkers$avg_log2FC) > 1 & foundmarkers$p_val_adj < 1e-05, 22, 18))
+                            ) + theme(legend.position = 'none')
+
+              gridExtra::grid.arrange(egg::set_panel_size(p = volc,
+                                                          width = unit(50, "cm"),
+                                                          height = unit(30, "cm")))
+
+              ggsave(paste0("./data/figures/deg/focus_genes/2D_S_volc_",
+                            tolower(id1),
+                            "_vs_",
+                            tolower(id2),
+                            "_",
+                            celltype_x,
+                            ".pdf"),
+                     egg::set_panel_size(p = volc,
+                                         width = unit(100, "cm"),
+                                         height = unit(75, "cm")),
+                     dpi = 1200,
+                     bg = "transparent",
+                     width = unit(48, "cm"),
+                     height = unit(38, "cm"))
+       }
+)
+```
+
 
 ```{r}
 endo <- readRDS("./data/checkpoint/annotated_endo.rds")
@@ -526,7 +1310,7 @@ gridExtra::grid.arrange(egg::set_panel_size(p = endo_umap,
                                             width = unit(15, "cm"),
                                             height = unit(15, "cm")))
 
-ggsave("./data/checkpoint/figs/2A_endo_umap.pdf",
+ggsave("./data/checkpoint/figs/3A_endo_umap.pdf",
        egg::set_panel_size(p = endo_umap,
                            width = unit(15, "cm"),
                            height = unit(15, "cm")),
@@ -611,7 +1395,7 @@ celltype_proportions <- ggplot(as.data.frame(freq_table),
                         scale_y_continuous(expand = c(.01, .01)) +
                         coord_fixed(0.05)
 
-ggsave("./data/checkpoint/figs/2B_endo_celltype_proportions.pdf",
+ggsave("./data/checkpoint/figs/3B_endo_celltype_proportions.pdf",
        celltype_proportions,
        dpi = 1200,
        bg = "transparent",
@@ -634,7 +1418,7 @@ gridExtra::grid.arrange(egg::set_panel_size(p = ankrd1_plot,
                                             width = unit(10, "cm"),
                                             height = unit(10, "cm")))
 
-ggsave("./data/checkpoint/figs/2C_endo_ankrd1_plot.pdf",
+ggsave("./data/checkpoint/figs/3C_endo_ankrd1_plot.pdf",
        egg::set_panel_size(p = ankrd1_plot, width = unit(10, "cm"), height = unit(10, "cm")),
        dpi = 1200, bg = "transparent",
        width = unit(6, "cm"), height = unit(5, "cm"))
@@ -731,7 +1515,7 @@ gridExtra::grid.arrange(egg::set_panel_size(p = all_marker_plot_w_theme,
                                             width = unit(30, "cm"),
                                             height = unit(30, "cm")))
 
-ggsave("./data/checkpoint/figs/2D_endo_heatmap_markers.pdf",
+ggsave("./data/checkpoint/figs/3D_endo_heatmap_markers.pdf",
        egg::set_panel_size(p = all_marker_plot_w_theme,
                            width = unit(30, "cm"),
                            height = unit(30, "cm")),
@@ -842,7 +1626,7 @@ gridExtra::grid.arrange(egg::set_panel_size(p = tip_stalk_plot_w_theme,
                                             width = unit(10, "cm"),
                                             height = unit(15, "cm")))
 
-ggsave("./data/checkpoint/figs/2E_endo_dotplot_tipstalk_markers.pdf",
+ggsave("./data/checkpoint/figs/3E_endo_dotplot_tipstalk_markers.pdf",
        egg::set_panel_size(p = tip_stalk_plot_w_theme,
                            width = unit(10, "cm"),
                            height = unit(15, "cm")),
@@ -869,7 +1653,7 @@ my_levels <- c("Term infant",
 merged_seurat_foxf1$condition <- factor(merged_seurat_foxf1$condition,
                                         levels = my_levels)
 
-ggsave("./data/checkpoint/figs/6A_foxf1_violin.pdf",
+ggsave("./data/checkpoint/figs/7A_foxf1_violin.pdf",
        VlnPlot(merged_seurat_foxf1,
                "FOXF1",
                group.by = "condition",
@@ -890,7 +1674,7 @@ merged_seurat_at1 <- subset(merged_seurat_subbed,
 merged_seurat_at1$condition <- factor(merged_seurat_at1$condition,
                                       levels = my_levels)
 
-ggsave("./data/checkpoint/figs/3C_cellchat_at1_sema3b.pdf",
+ggsave("./data/checkpoint/figs/4C_cellchat_at1_sema3b.pdf",
        VlnPlot(merged_seurat_at1,
                "SEMA3B",
                group.by = "condition",
@@ -906,7 +1690,7 @@ merged_seurat_myofb <- subset(merged_seurat_subbed,
 merged_seurat_myofb$condition <- factor(merged_seurat_myofb$condition,
                                         levels = my_levels)
 
-ggsave("./data/checkpoint/figs/3C_cellchat_myofb_sema3c.pdf",
+ggsave("./data/checkpoint/figs/4C_cellchat_myofb_sema3c.pdf",
        VlnPlot(merged_seurat_myofb,
                "SEMA3C",
                group.by = "condition",
@@ -923,7 +1707,7 @@ merged_seurat_cap <- subset(merged_seurat_subbed,
 merged_seurat_cap$condition <- factor(merged_seurat_cap$condition,
                                       levels = my_levels)
 
-ggsave("./data/checkpoint/figs/3C_cellchat_cap_sema6a.pdf",
+ggsave("./data/checkpoint/figs/4C_cellchat_cap_sema6a.pdf",
        VlnPlot(merged_seurat_cap,
                "SEMA6A",
                group.by = "condition",
@@ -933,7 +1717,7 @@ ggsave("./data/checkpoint/figs/3C_cellchat_cap_sema6a.pdf",
        width = unit(5, "cm"),
        height = unit(5.8, "cm"))
 
-ggsave("./data/checkpoint/figs/3C_cellchat_cap_nrp1.pdf",
+ggsave("./data/checkpoint/figs/4C_cellchat_cap_nrp1.pdf",
        VlnPlot(merged_seurat_cap,
                "NRP1",
                group.by = "condition",
@@ -943,7 +1727,7 @@ ggsave("./data/checkpoint/figs/3C_cellchat_cap_nrp1.pdf",
        width = unit(5, "cm"),
        height = unit(5.8, "cm"))
 
-ggsave("./data/checkpoint/figs/3C_cellchat_cap_plxna2.pdf",
+ggsave("./data/checkpoint/figs/4C_cellchat_cap_plxna2.pdf",
        VlnPlot(merged_seurat_cap,
                "PLXNA2",
                group.by = "condition",
@@ -1055,7 +1839,7 @@ gridExtra::grid.arrange(egg::set_panel_size(p = all_umap_acd,
                                             width = unit(20, "cm"),
                                             height = unit(20, "cm")))
 
-ggsave("./data/checkpoint/figs/5A_all_umap_acd.pdf",
+ggsave("./data/checkpoint/figs/6A_all_umap_acd.pdf",
        egg::set_panel_size(p = all_umap_acd,
                            width = unit(20, "cm"),
                            height = unit(20, "cm")),
@@ -1064,6 +1848,110 @@ ggsave("./data/checkpoint/figs/5A_all_umap_acd.pdf",
        width = unit(12, "cm"),
        height = unit(20, "cm"))
 
+```
+
+```{r}
+acd_celltype_order <- c("AT1",
+                        "Intermediate",
+                        "AT2",
+                        "RAS -3A2",
+                        "Secretory -3A1, -3A2",
+                        "Basal",
+                        "Multiciliated",
+                        "PNEC",
+
+                        "gCap",
+                        "aCap",
+                        "Arterial EC",
+                        "Pulmonary venous EC",
+                        "Systemic venous EC",
+                        "Lymphatic",
+
+                        "Alveolar FB",
+                        "Activated FB",
+                        "Adventitial FB",
+                        "Alveolar MyoFB",
+                        "Ductal MyoFB",
+                        "Pericyte",
+                        "VSMC",
+                        "Chondrocyte",
+                        "Proliferating"
+)
+
+acd$celltype <- ordered(as.factor(acd$celltype),
+                                  acd_celltype_order)
+```
+
+```{r}
+epi_marker_genes <- c("AGER", "RTKN2", # AT1
+                      "GPC5", "CLDN4", # Intermediate
+                      "SFTPC", "ABCA3", # AT2
+                      "ERBB4", "SCGB3A2", # RASC
+                      "SCGB1A1", "SCGB3A1", # Secretory -3A1, -3A2
+                      "KRT5", "KRT17", # Basal
+                      "FOXJ1", "TMEM190", #Multiciliated
+                      "NRXN1", "GRP" # PNEC
+)
+endo_marker_genes <- c("IL7R", "BTNL9", # gCap
+                       "CA4", "EDNRB", # aCap
+                       "GJA5", "DKK2", # Arterial EC
+                       "HDAC9", "ACKR1", # Pulmonary venous EC
+                       "PLVAP", "SPRY1", # Systemic venous EC
+                       "CCL21", "PROX1" # Lymphatic
+)
+
+meso_marker_genes <- c("WNT2", "TCF21", # Alveolar FB
+                       "CTHRC1", "POSTN", # Activated FB
+                       "MFAP5", "SCARA5", # Adventitial FB
+                       "PDGFRA", "FGF18", # Alveolar MyoFB
+                       "WNT5A", "HHIP", # Ductal MyoFB
+                       "COX4I2", "CSPG4", # Pericyte
+                       "ITGA7", "NTRK3", # VSMC
+                       "COL2A1", "COL9A2", # Chondrocyte
+                       "MKI67", "TOP2A" # Proliferating
+)
+```
+```{r}
+all_markers <- c(epi_marker_genes,
+                 endo_marker_genes,
+                 meso_marker_genes)
+
+all_marker_plot <- DotPlot(acd,
+                           features = all_markers,
+                           group.by = "celltype",
+                           dot.scale = 6)
+
+all_marker_plot_w_theme <- all_marker_plot +
+                           scale_color_gradientn(colors = rev(color_glacier),
+                                                 name = "Expression") +
+                           scale_y_discrete(limits = rev) +
+                           theme(axis.title = element_blank(),
+                                 axis.text.x = element_text(face = "italic",
+                                                            angle = 45,
+                                                            hjust = 1,
+                                                            size = 12),
+                                 aspect.ratio = 1,
+                                 panel.background = element_rect(fill = "transparent",
+                                                                 colour = "black"),
+                                 plot.background = element_rect(color = "transparent",
+                                                                fill = "transparent"),
+                                 legend.text = element_text(size = 12),
+                                 legend.title = element_text(size = 12))
+
+
+
+gridExtra::grid.arrange(egg::set_panel_size(p = all_marker_plot_w_theme,
+                                            width = unit(40, "cm"),
+                                            height = unit(20, "cm")))
+
+ggsave("./data/checkpoint/figs/S_acd_alldotplot.pdf",
+       egg::set_panel_size(p = all_marker_plot_w_theme,
+                           width = unit(40, "cm"),
+                           height = unit(20, "cm")),
+       dpi = 1200,
+       bg = "transparent",
+       width = unit(30, "cm"),
+       height = unit(20, "cm"))
 ```
 
 ```{r}
@@ -1079,7 +1967,7 @@ acd_at1$condition <- factor(acd_at1$condition,
                             levels = c("Term Control",
                                        "ACDMPV"))
 
-ggsave("./data/checkpoint/figs/5B_acd_at1_sema3b.pdf",
+ggsave("./data/checkpoint/figs/6B_acd_at1_sema3b.pdf",
        VlnPlot(acd_at1,
                "SEMA3B",
                group.by = "condition",
@@ -1098,7 +1986,7 @@ acd_cap$condition <- factor(acd_cap$condition,
                             levels = c("Term Control",
                                        "ACDMPV"))
 
-ggsave("./data/checkpoint/figs/5B_acd_cap_sema6a.pdf",
+ggsave("./data/checkpoint/figs/6B_acd_cap_sema6a.pdf",
        VlnPlot(acd_cap,
                "SEMA6A",
                group.by = "condition",
@@ -1108,7 +1996,7 @@ ggsave("./data/checkpoint/figs/5B_acd_cap_sema6a.pdf",
        width = unit(5, "cm"),
        height = unit(5.8, "cm"))
 
-ggsave("./data/checkpoint/figs/5B_acd_cap_nrp1.pdf",
+ggsave("./data/checkpoint/figs/6B_acd_cap_nrp1.pdf",
        VlnPlot(acd_cap,
                "NRP1",
                group.by = "condition",
@@ -1118,7 +2006,7 @@ ggsave("./data/checkpoint/figs/5B_acd_cap_nrp1.pdf",
        width = unit(5, "cm"),
        height = unit(5.8, "cm"))
 
-ggsave("./data/checkpoint/figs/5B_acd_cap_plxna2.pdf",
+ggsave("./data/checkpoint/figs/6B_acd_cap_plxna2.pdf",
        VlnPlot(acd_cap,
                "PLXNA2",
                group.by = "condition",
@@ -1137,7 +2025,7 @@ acd_fb$condition <- factor(acd_fb$condition,
                            levels = c("Term Control",
                                       "ACDMPV"))
 
-ggsave("./data/checkpoint/figs/5B_acd_fb_sema3c.pdf",
+ggsave("./data/checkpoint/figs/6B_acd_fb_sema3c.pdf",
        VlnPlot(acd_fb,
                "SEMA3C",
                group.by = "condition",
