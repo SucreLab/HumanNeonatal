@@ -805,34 +805,34 @@ celltype_ord <- c("AT1",
 
 strip_plot <- ggplot() +
   # First layer: Gray points
-  geom_jitter(data = subset(de_results_combined,
+  ggrastr::rasterise(geom_jitter(data = subset(de_results_combined,
                             color == "grey"),
               aes(x = factor(celltype,
                              level = celltype_ord),
                   y = avg_log2FC),
               width = 0.3,
               size = de_results_combined$size[de_results_combined$color == "grey"], 
-              color = "grey") +
+              color = "grey")) +
   
   # Second layer: Up points
-  geom_jitter(data = subset(de_results_combined,
+  ggrastr::rasterise(geom_jitter(data = subset(de_results_combined,
                             color == "green3"),
               aes(x = factor(celltype,
                              level = celltype_ord),
                   y = avg_log2FC),
               width = 0.3,
               size = de_results_combined$size[de_results_combined$color == "green3"], 
-              color = "green3") +
+              color = "green3")) +
 
   # Third layer: Down points
-  geom_jitter(data = subset(de_results_combined,
+  ggrastr::rasterise(geom_jitter(data = subset(de_results_combined,
                             color == "#E7A19E"),
               aes(x = factor(celltype,
                              level = celltype_ord),
                   y = avg_log2FC),
               width = 0.3,
               size = de_results_combined$size[de_results_combined$color == "#E7A19E"], 
-              color = "#E7A19E") +
+              color = "#E7A19E")) +
   ylim(-6,6) +
   # Add scales, labels, and theme
   labs(title = "DEG Across Celltype Up (purpgreenle) or Down (pink) in BPD vs Term infant",
@@ -911,34 +911,34 @@ celltype_ord <- c("AT1",
 
 strip_plot <- ggplot() +
   # First layer: Gray points
-  geom_jitter(data = subset(de_results_combined,
+  ggrastr::rasterise(geom_jitter(data = subset(de_results_combined,
                             color == "grey"),
               aes(x = factor(celltype,
                              level = celltype_ord),
                   y = avg_log2FC),
               width = 0.3,
               size = de_results_combined$size[de_results_combined$color == "grey"], 
-              color = "grey") +
+              color = "grey")) +
   
   # Second layer: Up points
-  geom_jitter(data = subset(de_results_combined,
+  ggrastr::rasterise(geom_jitter(data = subset(de_results_combined,
                             color == "#6A3D9A"),
               aes(x = factor(celltype,
                              level = celltype_ord),
                   y = avg_log2FC),
               width = 0.3,
               size = de_results_combined$size[de_results_combined$color == "#6A3D9A"], 
-              color = "#6A3D9A") +
+              color = "#6A3D9A")) +
 
   # Third layer: Down points
-  geom_jitter(data = subset(de_results_combined,
+  ggrastr::rasterise(geom_jitter(data = subset(de_results_combined,
                             color == "#E7A19E"),
               aes(x = factor(celltype,
                              level = celltype_ord),
                   y = avg_log2FC),
               width = 0.3,
               size = de_results_combined$size[de_results_combined$color == "#E7A19E"], 
-              color = "#E7A19E") +
+              color = "#E7A19E")) +
   ylim(-6,6) +
   # Add scales, labels, and theme
   labs(title = "DEG Across Celltype Up (purple) or Down (pink) in BPD+PH vs Term infant",
@@ -1017,34 +1017,34 @@ celltype_ord <- c("AT1",
 
 strip_plot <- ggplot() +
   # First layer: Gray points
-  geom_jitter(data = subset(de_results_combined,
+  ggrastr::rasterise(geom_jitter(data = subset(de_results_combined,
                             color == "grey"),
               aes(x = factor(celltype,
                              level = celltype_ord),
                   y = avg_log2FC),
               width = 0.3,
               size = de_results_combined$size[de_results_combined$color == "grey"], 
-              color = "grey") +
+              color = "grey")) +
   
   # Second layer: Up points
-  geom_jitter(data = subset(de_results_combined,
+  ggrastr::rasterise(geom_jitter(data = subset(de_results_combined,
                             color == "#6A3D9A"),
               aes(x = factor(celltype,
                              level = celltype_ord),
                   y = avg_log2FC),
               width = 0.3,
               size = de_results_combined$size[de_results_combined$color == "#6A3D9A"], 
-              color = "#6A3D9A") +
+              color = "#6A3D9A")) +
 
   # Third layer: Down points
-  geom_jitter(data = subset(de_results_combined,
+  ggrastr::rasterise(geom_jitter(data = subset(de_results_combined,
                             color == "green3"),
               aes(x = factor(celltype,
                              level = celltype_ord),
                   y = avg_log2FC),
               width = 0.3,
               size = de_results_combined$size[de_results_combined$color == "green3"], 
-              color = "green3") +
+              color = "green3")) +
   ylim(-6,6) +
   # Add scales, labels, and theme
   labs(title = "DEG Across Celltype Up (purple) or Down (green) in BPD+PH vs BPD",
@@ -1236,8 +1236,8 @@ future.apply::future_lapply(celltype_for_volc,
                             xlim = c(-max(abs(foundmarkers$avg_log2FC)), max(abs(foundmarkers$avg_log2FC))),
                             labSize = 50,
                             colAlpha = 0.76,
-                            pointSize = c(ifelse(abs(foundmarkers$avg_log2FC) > 1 & foundmarkers$p_val_adj < 1e-05, 22, 18))
-                            ) + theme(legend.position = 'none')
+                            pointSize = c(ifelse(abs(foundmarkers$avg_log2FC) > 1 & foundmarkers$p_val_adj < 1e-05, 22, 18)),
+                            raster = TRUE) + theme(legend.position = 'none')
 
               gridExtra::grid.arrange(egg::set_panel_size(p = volc,
                                                           width = unit(50, "cm"),
